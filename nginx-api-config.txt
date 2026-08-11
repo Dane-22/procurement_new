@@ -1,0 +1,33 @@
+server {
+    server_name procurement-api.xandree.com;
+    
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Support all HTTP methods
+        proxy_buffering off;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/procurement.xandree.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/procurement.xandree.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    if ($host = procurement-api.xandree.com) {
+        return 301 https://$host$request_uri;
+    }
+
+    listen 80;
+    server_name procurement-api.xandree.com;
+    return 404;
+}

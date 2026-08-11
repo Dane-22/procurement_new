@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "mysql2": "3.12.0",
+    "react-router-dom": "^7.13.1",
+    "xss": "^1.0.15"
+  }
+}
