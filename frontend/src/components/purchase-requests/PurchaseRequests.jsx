@@ -308,9 +308,17 @@ const PurchaseRequests = () => {
     }
     socketService.on('pr_updated', handlePRUpdate)
 
+    // Listen to new PR creations
+    const handlePRCreated = (data) => {
+      console.log('PR created (real-time):', data)
+      fetchRef.current?.()
+    }
+    socketService.on('pr_created', handlePRCreated)
+
     return () => {
       socketService.off('pr_status_changed', handleStatusChange)
       socketService.off('pr_updated', handlePRUpdate)
+      socketService.off('pr_created', handlePRCreated)
     }
   }, [])
 

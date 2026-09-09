@@ -21,50 +21,93 @@ const timeAgo = (dateStr) => {
   return date.toLocaleDateString();
 };
 
+const STATUS_MAPPING = {
+  'PENDING': ['For Admin Processing', 'Draft'],
+  'FOR APPROVAL': ['For Engineer Review', 'For Admin Review', 'For Super Admin Rep Review', 'For Super Admin Final Approval'],
+  'APPROVED': ['APPROVED'],
+  'REJECTED': ['REJECTED', 'Cancelled']
+};
+
 export default function PRManagementScreen({ navigation }) {
   const [requests, setRequests] = useState([]);
   const [allRequests, setAllRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [statusFilter, setStatusFilter] = useState(''); // Empty means all
 
   useEffect(() => {
-    fetchRequests();
+    setPage(1);
+    setHasMore(true);
+    fetchRequests(1, true);
   }, [statusFilter]);
 
-  const fetchRequests = async () => {
-    setLoading(true);
+  const fetchRequests = async (pageNum = page, reset = false) => {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
     try {
-      const url = statusFilter ? `/purchase-requests?status=${statusFilter}` : '/purchase-requests';
-      const response = await api.get(url);
-      setRequests(response.data.purchaseRequests || []);
+      let url = `/purchase-requests?limit=10&page=${pageNum}`;
+      if (statusFilter) {
+        const mappedStatuses = STATUS_MAPPING[statusFilter] || [statusFilter];
+        url += `&status=${mappedStatuses.join(',')}`;
+      }
       
-      if (!statusFilter) {
-        setAllRequests(response.data.purchaseRequests || []);
+      const response = await api.get(url);
+      const fetchedRequests = response.data.purchaseRequests || [];
+      
+      if (reset) {
+        setRequests(fetchedRequests);
+        if (!statusFilter) {
+          // Note: if paginated, this might only be the first 10. 
+          // You might need a separate endpoint for counts. 
+          setAllRequests(fetchedRequests);
+        }
+      } else {
+        setRequests(prev => [...prev, ...fetchedRequests]);
+      }
+
+      if (fetchedRequests.length < 10) {
+        setHasMore(false);
       }
     } catch (error) {
       console.error('Error fetching PRs:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const getStatusCount = (status) => {
-    if (!status) return allRequests.length;
-    return allRequests.filter(r => r.status?.toUpperCase() === status.toUpperCase()).length;
+  const loadMoreRequests = () => {
+    if (!loadingMore && hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchRequests(nextPage);
+    }
+  };
+
+  const getStatusCount = (statusTab) => {
+    if (!statusTab) return allRequests.length;
+    const mappedStatuses = STATUS_MAPPING[statusTab] || [statusTab];
+    return allRequests.filter(r => mappedStatuses.includes(r.status)).length;
   };
 
   const getStatusStyle = (status) => {
-    switch (status?.toUpperCase()) {
-      case 'PENDING': 
-      case 'PENDING ADMIN PROCESSING':
-        return { bg: '#ffedd5', text: '#ea580c', border: '#f97316' }; // Soft Orange
-      case 'APPROVED': 
-        return { bg: '#dcfce7', text: '#15803d', border: '#22c55e' }; // Soft Green
-      case 'REJECTED': 
-        return { bg: '#fee2e2', text: '#b91c1c', border: '#ef4444' }; // Soft Red
-      default: 
-        return { bg: '#f3f4f6', text: '#4b5563', border: '#9ca3af' }; // Soft Gray
+    const s = status || '';
+    if (STATUS_MAPPING['PENDING'].includes(s)) {
+      return { bg: '#ffedd5', text: '#ea580c', border: '#f97316' }; // Soft Orange
+    } else if (STATUS_MAPPING['FOR APPROVAL'].includes(s)) {
+      return { bg: '#dbeafe', text: '#1d4ed8', border: '#3b82f6' }; // Soft Blue
+    } else if (STATUS_MAPPING['APPROVED'].includes(s)) {
+      return { bg: '#dcfce7', text: '#15803d', border: '#22c55e' }; // Soft Green
+    } else if (STATUS_MAPPING['REJECTED'].includes(s)) {
+      return { bg: '#fee2e2', text: '#b91c1c', border: '#ef4444' }; // Soft Red
     }
+    return { bg: '#f3f4f6', text: '#4b5563', border: '#9ca3af' }; // Soft Gray
   };
 
   const renderItem = ({ item }) => {
@@ -95,6 +138,14 @@ export default function PRManagementScreen({ navigation }) {
             <Text style={styles.cardAmount}>₱{parseFloat(item.total_amount).toFixed(2)}</Text>
           </View>
         </View>
+        
+        <TouchableOpacity 
+          style={styles.cardEditBtn}
+          onPress={() => navigation.navigate('EditRequest', { editMode: true, requestData: item })}
+        >
+          <MaterialIcons name="edit" size={16} color="#3b82f6" style={{ marginRight: 4 }} />
+          <Text style={styles.cardEditText}>Edit Request</Text>
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -131,6 +182,15 @@ export default function PRManagementScreen({ navigation }) {
           renderItem={renderItem}
           contentContainerStyle={styles.listContainer}
           ListEmptyComponent={<Text style={styles.emptyText}>No requests found</Text>}
+          onEndReached={loadMoreRequests}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator size="small" color="#FFBF00" />
+              </View>
+            ) : null
+          }
         />
       )}
     </SafeAreaView>
@@ -246,5 +306,19 @@ const styles = StyleSheet.create({
     marginTop: 40,
     color: '#6b7280',
     fontSize: 16,
+  },
+  cardEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  cardEditText: {
+    color: '#3b82f6',
+    fontWeight: '600',
+    fontSize: 14,
   }
 });

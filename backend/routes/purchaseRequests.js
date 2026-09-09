@@ -782,8 +782,11 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
         );
       }
     }
-
     await conn.commit();
+
+    if (req.io) {
+      req.io.emit('pr_created', { prId, pr_number: prNumber, status });
+    }
 
     res.status(201).json({
       message: isDraft ? 'Draft saved successfully' : 'Purchase request created successfully',
@@ -818,8 +821,6 @@ router.put('/:id/draft', authenticate, async (req, res) => {
   let conn;
   try {
     const { purpose, remarks, items, date_needed, project, project_address, order_number, payment_basis, payment_terms_note, supplier_id, supplier_name, payment_schedules } = req.body;
-    await assertProjectIsActive(project, { providedOrderNumber: order_number });
-
     // Check if PR exists and is draft
     const [prs] = await db.query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
     if (prs.length === 0) {
@@ -827,6 +828,11 @@ router.put('/:id/draft', authenticate, async (req, res) => {
     }
 
     const pr = prs[0];
+
+    // Check project is active only if changed
+    if (pr.project !== project) {
+      await assertProjectIsActive(project, { providedOrderNumber: order_number });
+    }
 
     // Only the original requester can update draft
     if (pr.requested_by !== req.user.id) {
@@ -2497,8 +2503,6 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
   let conn;
   try {
     const { purpose, remarks, items, date_needed, project, project_address, order_number, payment_basis, payment_terms_note, supplier_id, supplier_name, payment_schedules } = req.body;
-    await assertProjectIsActive(project, { providedOrderNumber: order_number });
-
     // Check if PR exists and is rejected
     const [prs] = await db.query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
     if (prs.length === 0) {
@@ -2506,6 +2510,11 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
     }
 
     const pr = prs[0];
+
+    // Check project is active only if changed
+    if (pr.project !== project) {
+      await assertProjectIsActive(project, { providedOrderNumber: order_number });
+    }
     const nextPaymentBasis = payment_basis ?? pr.payment_basis;
     const nextPaymentTermsNote = normalizePaymentTermsNote(payment_terms_note ?? pr.payment_terms_note);
     const nextPaymentTermsCode = nextPaymentTermsNote ? 'CUSTOM' : null;

@@ -99,6 +99,11 @@ export default function App() {
             component={PRDetailScreen} 
             options={{ title: 'PR Details' }}
           />
+          <Stack.Screen 
+            name="EditRequest" 
+            component={CreateRequestScreen} 
+            options={{ title: 'Edit Request' }}
+          />
         </Stack.Navigator>
       )}
       <StatusBar style="auto" />

@@ -122,6 +122,14 @@ export default function DashboardScreen({ navigation }) {
              <Text style={styles.timelineDate}>{new Date(item.created_at || Date.now()).toLocaleDateString()}</Text>
              {item.first_name && <Text style={styles.timelineUser}>By: {item.first_name} {item.last_name}</Text>}
           </View>
+          
+          <TouchableOpacity 
+            style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: '#eff6ff', padding: 6, borderRadius: 6, alignSelf: 'flex-start' }}
+            onPress={() => navigation.navigate('EditRequest', { editMode: true, requestData: item })}
+          >
+            <MaterialIcons name="edit" size={14} color="#3b82f6" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 12, color: '#3b82f6', fontWeight: '500' }}>Edit Request</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );

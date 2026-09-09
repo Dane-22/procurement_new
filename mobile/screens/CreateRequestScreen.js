@@ -6,7 +6,9 @@ import api, { BASE_URL } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-export default function CreateRequestScreen({ navigation }) {
+export default function CreateRequestScreen({ route, navigation }) {
+  const { editMode, requestData } = route.params || {};
+
   const [purpose, setPurpose] = useState('');
   const [remarks, setRemarks] = useState('');
   const [project, setProject] = useState('');
@@ -35,12 +37,34 @@ export default function CreateRequestScreen({ navigation }) {
   useEffect(() => {
     fetchCategories();
     fetchProjects();
-  }, []);
+
+    if (editMode && requestData) {
+      setPurpose(requestData.purpose || '');
+      setRemarks(requestData.remarks || '');
+      setProject(requestData.project || '');
+      if (requestData.date_needed) {
+        setDateNeeded(new Date(requestData.date_needed).toISOString().split('T')[0]);
+      }
+      setPaymentBasis(requestData.payment_basis || 'debt');
+      
+      // Items might come as an array of objects from the backend
+      if (requestData.items && Array.isArray(requestData.items)) {
+        setItems(requestData.items.map(i => ({
+          item_id: i.item_id || i.id,
+          item_name: i.item_name,
+          quantity: String(i.quantity),
+          unit_price: String(i.unit_price || 0)
+        })));
+      }
+    }
+  }, [editMode, requestData]);
 
   const fetchProjects = async () => {
     try {
       const res = await api.get('/projects');
-      setProjects(Array.isArray(res.data) ? res.data : []);
+      let data = Array.isArray(res.data) ? res.data : [];
+      data = data.filter(p => p.is_active || (editMode && requestData?.project === p.branch_name));
+      setProjects(data);
     } catch (e) {
       console.error('Error fetching projects:', e);
     }
@@ -221,11 +245,24 @@ export default function CreateRequestScreen({ navigation }) {
       if (!netInfo.isConnected) {
         // Save offline
         const { addPendingRequest } = require('../services/offlineSync');
-        await addPendingRequest('/purchase-requests', 'POST', payload);
-        Alert.alert('Offline Mode', 'No internet connection. Request saved offline and will sync automatically when online.');
+        if (editMode && requestData?.id) {
+           await addPendingRequest(`/purchase-requests/${requestData.id}`, 'PUT', payload);
+           Alert.alert('Offline Mode', 'No internet connection. Request update saved offline and will sync automatically when online.');
+        } else {
+           await addPendingRequest('/purchase-requests', 'POST', payload);
+           Alert.alert('Offline Mode', 'No internet connection. Request saved offline and will sync automatically when online.');
+        }
       } else {
-        await api.post('/purchase-requests', payload);
-        Alert.alert('Success', 'Request created successfully!');
+        if (editMode && requestData?.id) {
+          const endpoint = requestData.status === 'Rejected' 
+            ? `/purchase-requests/${requestData.id}/resubmit` 
+            : `/purchase-requests/${requestData.id}/draft`;
+          await api.put(endpoint, payload);
+          Alert.alert('Success', 'Request updated successfully!');
+        } else {
+          await api.post('/purchase-requests', payload);
+          Alert.alert('Success', 'Request created successfully!');
+        }
       }
       
       setPurpose('');
@@ -234,17 +271,34 @@ export default function CreateRequestScreen({ navigation }) {
       setDateNeeded(new Date().toISOString().split('T')[0]);
       setItems([]);
       
-      navigation.navigate('Dashboard');
+      if (editMode) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('MainTabs', { screen: 'Dashboard' });
+      }
     } catch (error) {
       console.error('Error creating request:', error);
       // Fallback: If network request failed unexpectedly, we could save it too
       if (error.message.includes('Network Error')) {
         const { addPendingRequest } = require('../services/offlineSync');
-        await addPendingRequest('/purchase-requests', 'POST', payload);
-        Alert.alert('Offline Mode', 'Network failed during request. It was saved offline and will sync when online.');
-        navigation.navigate('Dashboard');
+        if (editMode && requestData?.id) {
+           const endpoint = requestData.status === 'Rejected' 
+             ? `/purchase-requests/${requestData.id}/resubmit` 
+             : `/purchase-requests/${requestData.id}/draft`;
+           await addPendingRequest(endpoint, 'PUT', payload);
+           Alert.alert('Offline Mode', 'Network failed during update. It was saved offline and will sync when online.');
+        } else {
+           await addPendingRequest('/purchase-requests', 'POST', payload);
+           Alert.alert('Offline Mode', 'Network failed during request. It was saved offline and will sync when online.');
+        }
+        if (editMode) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('MainTabs', { screen: 'Dashboard' });
+        }
       } else {
         const errorMsg = error.response?.data?.message || 'Could not create the request.';
+        console.error('BACKEND ERROR:', error.response?.data);
         Alert.alert('Error', errorMsg);
       }
     } finally {
@@ -264,8 +318,8 @@ export default function CreateRequestScreen({ navigation }) {
       >
         <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 120 }} bounces={false}>
           <View style={[styles.headerGradient, { backgroundColor: '#FFBF00' }]}>
-            <Text style={styles.title}>New Request</Text>
-            <Text style={styles.subtitle}>Submit items for procurement processing</Text>
+            <Text style={styles.title}>{editMode ? 'Edit Request' : 'New Request'}</Text>
+            <Text style={styles.subtitle}>{editMode ? 'Update your request details' : 'Submit items for procurement processing'}</Text>
           </View>
       
       <View style={styles.formSection}>
@@ -317,7 +371,8 @@ export default function CreateRequestScreen({ navigation }) {
                 value={new Date(dateNeeded || new Date())}
                 mode="date"
                 display="default"
-                onChange={onChangeDate}
+                onValueChange={(event, selectedDate) => onChangeDate(event, selectedDate)}
+                onDismiss={() => setShowDatePicker(false)}
               />
             )}
           </View>
@@ -411,7 +466,7 @@ export default function CreateRequestScreen({ navigation }) {
           disabled={loading}
         >
           <Text style={styles.submitButtonText}>
-            {loading ? 'Submitting...' : 'Submit Request'}
+            {loading ? (editMode ? 'Updating...' : 'Submitting...') : (editMode ? 'Update Request' : 'Submit Request')}
           </Text>
         </TouchableOpacity>
       </View>

@@ -114,6 +114,10 @@ export default function PRDetailScreen({ route, navigation }) {
     return userRole === 'super_admin' && (pr.status !== 'For Purchase' && pr.status !== 'Rejected' && pr.status !== 'Draft');
   };
 
+  const canEdit = () => {
+    return true;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -172,6 +176,14 @@ export default function PRDetailScreen({ route, navigation }) {
           <View style={styles.actionContainer}>
              <TouchableOpacity style={[styles.button, styles.bypassBtn]} onPress={handleBypass}>
               <Text style={styles.buttonText}>Bypass to PO</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {canEdit() && (
+          <View style={styles.actionContainer}>
+             <TouchableOpacity style={[styles.button, styles.editBtn]} onPress={() => navigation.navigate('EditRequest', { editMode: true, requestData: pr })}>
+              <Text style={styles.buttonText}>Edit Request</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -307,6 +319,9 @@ const styles = StyleSheet.create({
   },
   bypassBtn: {
     backgroundColor: '#f59e0b',
+  },
+  editBtn: {
+    backgroundColor: '#3b82f6',
   },
   buttonText: {
     color: 'white',
