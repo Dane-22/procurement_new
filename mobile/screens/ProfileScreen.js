@@ -3,8 +3,11 @@ import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView, Alert } fr
 import { MaterialIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
+import { AuthContext } from '../App';
+import { useContext } from 'react';
 
 export default function ProfileScreen({ navigation }) {
+  const { setUser: setGlobalUser } = useContext(AuthContext) || {};
   const [user, setUser] = useState(null);
   const [profileImage, setProfileImage] = useState(null);
 
@@ -54,11 +57,13 @@ export default function ProfileScreen({ navigation }) {
         onPress: async () => {
           await SecureStore.deleteItemAsync('token');
           await SecureStore.deleteItemAsync('user');
-          // Actually, proper logout requires resetting the state in App.js
-          // For now, we'll just reload the app or navigate to a screen that forces re-auth
-          Alert.alert('Logged Out', 'Please restart the app or use the implemented logout context.', [
-             { text: 'OK' }
-          ]);
+          if (setGlobalUser) {
+            setGlobalUser(null);
+          } else {
+            Alert.alert('Logged Out', 'Please restart the app or use the implemented logout context.', [
+               { text: 'OK' }
+            ]);
+          }
         }
       }
     ]);

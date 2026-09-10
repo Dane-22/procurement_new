@@ -1,20 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
+import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
 
 export default function ApprovalsScreen() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
+  const [filter, setFilter] = useState('pending'); // 'pending' or 'reviewed'
+  const navigation = useNavigation();
+  const isFocused = useIsFocused();
 
   useEffect(() => {
-    fetchPendingRequests();
-  }, []);
+    if (isFocused) {
+      fetchUserAndRequests();
+    }
+  }, [isFocused, filter]);
 
-  const fetchPendingRequests = async () => {
+  const fetchUserAndRequests = async () => {
+    setLoading(true);
     try {
-      // Assuming a generic endpoint for pending approvals, we can adjust later
-      const response = await api.get('/purchase-requests?status=PENDING'); 
-      setRequests(response.data);
+      const userStr = await SecureStore.getItemAsync('user');
+      let role = null;
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        role = user.role;
+        setUserRole(role);
+      }
+      
+      const response = await api.get(`/purchase-requests?my_reviews=${filter}`); 
+      const allPrs = response.data.purchaseRequests || [];
+      
+      setRequests(allPrs);
     } catch (error) {
       console.error('Error fetching pending approvals:', error);
     } finally {
@@ -22,51 +40,67 @@ export default function ApprovalsScreen() {
     }
   };
 
-  const handleApprove = async (id) => {
-    try {
-      await api.put(`/purchase-requests/${id}/status`, { status: 'APPROVED' });
-      Alert.alert('Success', 'Request approved');
-      fetchPendingRequests();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to approve request');
-    }
+  const handleReview = (id) => {
+    navigation.navigate('PRReview', { prId: id });
   };
+  const renderItem = ({ item }) => {
+    const requesterName = `${item.requester_first_name || ''} ${item.requester_last_name || ''}`.trim() || 'Unknown Requester';
 
-  const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{item.pr_number || `Request #${item.id}`}</Text>
-        <Text style={styles.cardAmount}>${item.total_amount || '0.00'}</Text>
-      </View>
-      <Text style={styles.cardDescription}>{item.purpose || 'No description provided'}</Text>
-      
-      <View style={styles.actions}>
-        <TouchableOpacity style={[styles.button, styles.approveBtn]} onPress={() => handleApprove(item.id)}>
-          <Text style={styles.buttonText}>Approve</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.rejectBtn]}>
-          <Text style={styles.buttonText}>Reject</Text>
-        </TouchableOpacity>
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{item.pr_number || `Request #${item.id}`}</Text>
+          <Text style={styles.cardAmount}>₱{parseFloat(item.total_amount || 0).toFixed(2)}</Text>
+        </View>
+        <Text style={styles.requesterText}>Requester: {requesterName}</Text>
+        <Text style={styles.cardDescription}>{item.purpose || 'No description provided'}</Text>
+        
+        <View style={styles.actions}>
+        {filter === 'pending' ? (
+          <TouchableOpacity style={[styles.button, styles.reviewBtn]} onPress={() => handleReview(item.id)}>
+            <Text style={styles.buttonText}>Review Request</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.button, styles.viewBtn]} onPress={() => navigation.navigate('PRDetail', { prId: item.id })}>
+            <Text style={styles.buttonText}>View Details</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
+};
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color="#FFBF00" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, filter === 'pending' && styles.activeTab]} 
+          onPress={() => setFilter('pending')}
+        >
+          <Text style={[styles.tabText, filter === 'pending' && styles.activeTabText]}>Pending Reviews</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, filter === 'reviewed' && styles.activeTab]} 
+          onPress={() => setFilter('reviewed')}
+        >
+          <Text style={[styles.tabText, filter === 'reviewed' && styles.activeTabText]}>Reviewed Already</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={requests}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={<Text style={styles.emptyText}>No pending approvals right now!</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>{filter === 'pending' ? 'No pending approvals right now!' : 'No reviewed requests yet.'}</Text>}
       />
     </View>
   );
@@ -109,9 +143,16 @@ const styles = StyleSheet.create({
   cardAmount: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#10b981', // green-500
+    color: '#10b981', // green
+  },
+  requesterText: {
+    fontSize: 14,
+    color: '#1f2937',
+    fontWeight: '500',
+    marginBottom: 4,
   },
   cardDescription: {
+    fontSize: 14,
     color: '#6b7280',
     marginBottom: 15,
   },
@@ -126,15 +167,40 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginLeft: 10, // simple gap fallback
   },
-  approveBtn: {
-    backgroundColor: '#10b981',
+  reviewBtn: {
+    backgroundColor: '#FFBF00',
   },
-  rejectBtn: {
-    backgroundColor: '#ef4444',
+  viewBtn: {
+    backgroundColor: '#1f2937',
   },
   buttonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    padding: 4,
+    margin: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  activeTab: {
+    backgroundColor: '#FFBF00',
+  },
+  tabText: {
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: 'white',
   },
   emptyText: {
     textAlign: 'center',

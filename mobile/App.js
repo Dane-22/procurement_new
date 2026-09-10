@@ -13,7 +13,12 @@ import PRManagementScreen from './screens/PRManagementScreen';
 import PRDetailScreen from './screens/PRDetailScreen';
 import CreateRequestScreen from './screens/CreateRequestScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import PRReviewScreen from './screens/PRReviewScreen';
+import ApprovalsScreen from './screens/ApprovalsScreen';
 import { initDB, setupNetworkListener } from './services/offlineSync';
+import { createContext } from 'react';
+
+export const AuthContext = createContext(null);
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -35,6 +40,8 @@ function MainTabs() {
             iconName = 'add-circle-outline';
           } else if (route.name === 'Profile') {
             iconName = 'person';
+          } else if (route.name === 'Approvals') {
+            iconName = 'check-circle-outline';
           }
 
           return <MaterialIcons name={iconName} size={focused ? 28 : 24} color={color} />;
@@ -58,6 +65,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Requests" component={PRManagementScreen} options={{ headerTitle: 'All Requests' }} />
+      <Tab.Screen name="Approvals" component={ApprovalsScreen} options={{ headerTitle: 'Approvals' }} />
       <Tab.Screen name="New Request" component={CreateRequestScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
@@ -79,8 +87,9 @@ export default function App() {
   }, []);
 
   return (
-    <NavigationContainer>
-      {!user ? (
+    <AuthContext.Provider value={{ user, setUser }}>
+      <NavigationContainer>
+        {!user ? (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Landing" component={LandingScreen} />
           <Stack.Screen name="Login">
@@ -97,7 +106,12 @@ export default function App() {
           <Stack.Screen 
             name="PRDetail" 
             component={PRDetailScreen} 
-            options={{ title: 'PR Details' }}
+            options={{ title: 'Purchase Request Details' }}
+          />
+          <Stack.Screen 
+            name="PRReview" 
+            component={PRReviewScreen} 
+            options={{ title: 'Review Request' }}
           />
           <Stack.Screen 
             name="EditRequest" 
@@ -108,6 +122,7 @@ export default function App() {
       )}
       <StatusBar style="auto" />
     </NavigationContainer>
+    </AuthContext.Provider>
   );
 }
 

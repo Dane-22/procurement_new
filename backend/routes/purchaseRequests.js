@@ -223,6 +223,7 @@ router.get('/', authenticate, async (req, res) => {
     const { view } = req.query;
     const q = String(req.query.q || '').trim();
     const pendingReview = req.query.pending_review === 'true';
+    const myReviews = req.query.my_reviews; // 'pending' or 'reviewed'
 
     const statusesRaw = req.query.status;
     const statuses = Array.isArray(statusesRaw)
@@ -244,8 +245,8 @@ router.get('/', authenticate, async (req, res) => {
     const whereParams = [];
 
     // Filter for pending reviews for current user
-    if (pendingReview) {
-      console.log('🔍 Fetching pending reviews for user:', req.user.id, 'role:', req.user.role);
+    if (pendingReview || myReviews) {
+      console.log('🔍 Fetching reviews for user:', req.user.id, 'role:', req.user.role, 'filter:', myReviews || 'pending');
       baseFrom = `
         FROM purchase_requests pr
         JOIN employees e ON pr.requested_by = e.id
@@ -253,13 +254,17 @@ router.get('/', authenticate, async (req, res) => {
         JOIN purchase_request_reviews prr ON pr.id = prr.purchase_request_id
       `;
       whereClauses.push('prr.reviewer_id = ?');
-      whereClauses.push('prr.review_status = ?');
-      whereParams.push(req.user.id, 'pending');
-      console.log('🔍 Pending review query params:', { userId: req.user.id, reviewStatus: 'pending' });
+      if (pendingReview || myReviews === 'pending') {
+        whereClauses.push('prr.review_status = ?');
+        whereParams.push(req.user.id, 'pending');
+      } else if (myReviews === 'reviewed') {
+        whereClauses.push('prr.review_status != ?');
+        whereParams.push(req.user.id, 'pending');
+      }
     }
 
     // Engineers see only their own PRs by default, but can view all with ?view=all
-    if (req.user.role === 'engineer' && view !== 'all' && !pendingReview) {
+    if (req.user.role === 'engineer' && view !== 'all' && !pendingReview && !myReviews) {
       whereClauses.push('pr.requested_by = ?');
       whereParams.push(req.user.id);
     }
@@ -676,7 +681,9 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
       })
       : [];
 
-    const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
+    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
     assertPaymentScheduleTotalsMatch({
       paymentBasis,
       schedules: normalizedPaymentSchedules,
@@ -868,7 +875,9 @@ router.put('/:id/draft', authenticate, async (req, res) => {
       })
       : [];
 
-    const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
+    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
 
     let supplierAddress = null;
     const effectiveSupplierId = supplier_id ?? pr.supplier_id;
@@ -2557,7 +2566,9 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       })
       : [];
 
-    const totalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
+    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
     const schedulesForValidation = hasPaymentSchedulesField
       ? normalizedPaymentSchedules
       : await getExistingPaymentSchedules(conn, req.params.id);
@@ -2730,6 +2741,12 @@ router.put('/:id/approve', authenticate, async (req, res) => {
            await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', [nextStatus, 'All admins approved', req.params.id]);
          }
       }
+    } else if (userRole === 'admin' && (currentStatus === 'For Admin Processing' || currentStatus === 'Pending Admin Processing')) {
+        if (status === 'Rejected' || status === 'rejected') {
+          await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Returned', remarks || 'Returned by Admin', req.params.id]);
+        } else {
+          await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Under Admin Review', remarks || 'Approved for Admin Review', req.params.id]);
+        }
     } else if (userRole === 'super_admin_rep' && currentStatus === 'For Super Admin Rep Review') {
        if (status === 'Rejected' || status === 'rejected') {
          await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Pending Admin Processing', remarks || 'Returned by Super Admin Rep', req.params.id]);

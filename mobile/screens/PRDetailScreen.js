@@ -4,12 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 import * as SecureStore from 'expo-secure-store';
 
-const REVIEW_STATUSES = new Set([
-  'For Engineer Review',
-  'For Admin Review',
-  'For Super Admin Rep Review'
-]);
-
 export default function PRDetailScreen({ route, navigation }) {
   const { prId } = route.params;
   const [pr, setPr] = useState(null);
@@ -32,10 +26,9 @@ export default function PRDetailScreen({ route, navigation }) {
 
   const fetchPRDetails = async () => {
     try {
-      const response = await api.get(`/purchase-requests`);
-      const prData = response.data.purchaseRequests.find(p => p.id === prId);
-      
-      if (prData) {
+      const response = await api.get(`/purchase-requests/${prId}`);
+      if (response.data && response.data.purchaseRequest) {
+        const prData = response.data.purchaseRequest;
         setPr(prData);
         setItems(prData.items || []);
       }
@@ -47,34 +40,7 @@ export default function PRDetailScreen({ route, navigation }) {
     }
   };
 
-  const handleApprove = async () => {
-    try {
-      if (REVIEW_STATUSES.has(pr.status)) {
-        await api.post(`/purchase-requests/${prId}/review`, { review_status: 'approved', review_comment: '' });
-      } else {
-        // Final approval
-        await api.put(`/purchase-requests/${prId}/approve`, { status: 'For Purchase', remarks: '' });
-      }
-      Alert.alert('Success', 'Request approved');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', error?.response?.data?.message || 'Failed to approve request');
-    }
-  };
-
-  const handleReject = async () => {
-    try {
-      if (REVIEW_STATUSES.has(pr.status)) {
-        await api.post(`/purchase-requests/${prId}/review`, { review_status: 'rejected', review_comment: 'Rejected from mobile' });
-      } else {
-        await api.put(`/purchase-requests/${prId}/approve`, { status: 'Rejected', remarks: 'Rejected from mobile' });
-      }
-      Alert.alert('Success', 'Request rejected');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', error?.response?.data?.message || 'Failed to reject request');
-    }
-  };
+  // Actions are now handled in PRReviewScreen
 
   const handleBypass = async () => {
     try {
@@ -89,7 +55,7 @@ export default function PRDetailScreen({ route, navigation }) {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+        <ActivityIndicator size="large" color="#FFBF00" />
       </View>
     );
   }
@@ -122,7 +88,7 @@ export default function PRDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>{pr.pr_number || `PR #${pr.id}`}</Text>
+          <Text style={styles.title}>PR #{pr.pr_number || pr.id}</Text>
           <Text style={styles.status}>{pr.status}</Text>
         </View>
 
@@ -148,7 +114,7 @@ export default function PRDetailScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Details</Text>
           <View style={styles.row}>
             <Text style={styles.label}>Requester:</Text>
-            <Text style={styles.value}>{pr.first_name} {pr.last_name}</Text>
+            <Text style={styles.value}>{pr.requester_first_name} {pr.requester_last_name}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Purpose:</Text>
@@ -156,18 +122,15 @@ export default function PRDetailScreen({ route, navigation }) {
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Total Amount:</Text>
-            <Text style={styles.amount}>${parseFloat(pr.total_amount).toFixed(2)}</Text>
+            <Text style={styles.amount}>₱{parseFloat(pr.total_amount).toFixed(2)}</Text>
           </View>
         </View>
 
         {/* Action Buttons */}
         {canApprove() && (
           <View style={styles.actionContainer}>
-            <TouchableOpacity style={[styles.button, styles.approveBtn]} onPress={handleApprove}>
-              <Text style={styles.buttonText}>Approve</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, styles.rejectBtn]} onPress={handleReject}>
-              <Text style={styles.buttonText}>Reject</Text>
+            <TouchableOpacity style={[styles.button, styles.reviewBtn]} onPress={() => navigation.navigate('PRReview', { prId: pr.id })}>
+              <Text style={styles.buttonText}>Review Purchase Request</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -220,8 +183,8 @@ const styles = StyleSheet.create({
   status: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#3b82f6',
-    backgroundColor: '#eff6ff',
+    color: '#d97706',
+    backgroundColor: '#fef3c7',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 15,
@@ -278,7 +241,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   timelineTextActive: {
-    color: '#1f2937',
+    color: '#FFBF00',
     fontWeight: 'bold',
   },
   row: {
@@ -311,17 +274,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 5,
   },
-  approveBtn: {
-    backgroundColor: '#10b981',
-  },
-  rejectBtn: {
-    backgroundColor: '#ef4444',
+  reviewBtn: {
+    backgroundColor: '#FFBF00',
   },
   bypassBtn: {
     backgroundColor: '#f59e0b',
   },
   editBtn: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#FFBF00',
   },
   buttonText: {
     color: 'white',

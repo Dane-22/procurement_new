@@ -11,6 +11,7 @@ export default function CreateRequestScreen({ route, navigation }) {
 
   const [purpose, setPurpose] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
   const [project, setProject] = useState('');
   const [dateNeeded, setDateNeeded] = useState(new Date().toISOString().split('T')[0]);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -230,7 +231,7 @@ export default function CreateRequestScreen({ route, navigation }) {
       project,
       date_needed: dateNeeded,
       payment_basis: paymentBasis,
-      total_amount: 0,
+      total_amount: parseFloat(totalAmount) || 0,
       is_item_request: true,
       items: items.map(i => ({
         item_id: i.item_id,
@@ -460,6 +461,20 @@ export default function CreateRequestScreen({ route, navigation }) {
           ))
         )}
 
+        {items.length > 0 && (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Amount (₱):</Text>
+            <TextInput
+              style={styles.totalInput}
+              value={totalAmount}
+              onChangeText={setTotalAmount}
+              keyboardType="numeric"
+              placeholder="0.00"
+              placeholderTextColor="#94a3b8"
+            />
+          </View>
+        )}
+
         <TouchableOpacity 
           style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
           onPress={handleSubmit}
@@ -626,6 +641,10 @@ const styles = StyleSheet.create({
   
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
   emptyStateText: { color: '#94a3b8', fontSize: 16, marginTop: 12, fontWeight: '500' },
+  
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff', padding: 16, borderRadius: 16, marginTop: 4, marginBottom: 16, borderWidth: 1, borderColor: '#e2e8f0' },
+  totalLabel: { fontSize: 16, fontWeight: '600', color: '#64748b' },
+  totalInput: { fontSize: 20, fontWeight: '800', color: '#10b981', textAlign: 'right', minWidth: 100, padding: 0 },
   
   submitButton: { backgroundColor: '#FFBF00', padding: 18, borderRadius: 16, alignItems: 'center', shadowColor: '#FFBF00', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8, marginTop: 10, marginBottom: 40 },
   submitButtonDisabled: { backgroundColor: '#94a3b8', shadowOpacity: 0 },

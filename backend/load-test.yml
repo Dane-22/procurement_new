@@ -1,0 +1,27 @@
+config:
+  target: "http://localhost:5005"
+  phases:
+    - duration: 20
+      arrivalRate: 50
+      name: "Load Test (1000 total users over 20 seconds)"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+scenarios:
+  - name: "Health Check and Fetch Items"
+    flow:
+      - get:
+          url: "/api/health"
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "admin@example.com"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "token"
+      - get:
+          url: "/api/items"
+          headers:
+            Authorization: "Bearer {{ token }}"
