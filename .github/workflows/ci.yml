@@ -97,5 +97,7 @@ jobs:
           # Deploy Backend and Frontend using Docker Compose
           docker compose --env-file /opt/procurement/.env.prod up -d --build backend frontend
           
+          sleep 10
+          
           # Verify health
           curl -i http://127.0.0.1:5001/api/health
