@@ -4,10 +4,11 @@ import Button from '../ui/Button';
 import { Eye, CheckCircle, XCircle, Edit, Trash2, Shield, X, AlertTriangle, AlertCircle, ChevronUp, ChevronDown, Settings, FileSpreadsheet } from 'lucide-react';
 import StatusBadge from '../ui/StatusBadge';
 import { formatCurrency, formatDate, formatPaymentTerms } from '../../utils/formatters';
+import purchaseRequestService from '../../services/purchaseRequestService';
 
 export const PRTable = ({
   purchaseRequests, user, expandedId, setExpandedId,
-  expandedPRDetails, setLoadingExpanded, loadingExpanded,
+  expandedPRDetails, setExpandedPRDetails, setLoadingExpanded, loadingExpanded,
   openProcurementApproval, openProcurementReject,
   openEditModal, handleDelete, handleCancelPR,
   openReviewModal, openProcessModal, openSuperAdminModal,

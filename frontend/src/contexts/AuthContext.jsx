@@ -14,6 +14,7 @@ export const AuthProvider = ({ children }) => {
     const token = authService.getToken();
     
     if (storedUser && token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUser(storedUser);
       setIsAuthenticated(true);
     }

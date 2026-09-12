@@ -1186,11 +1186,11 @@ const PurchaseRequests = () => {
         pr={previewPR}
         loading={previewLoading}
         onClose={closePreview}
-        onApprove={false && user?.role === 'procurement' && previewPR?.status === 'For Procurement Review' ? (_, pr) => {
+        onApprove={user?.role === 'procurement' && previewPR?.status === 'For Procurement Review' ? (_, pr) => {
           closePreview()
           openProcurementApproval(pr)
         } : undefined}
-        onReject={false && user?.role === 'procurement' && previewPR?.status === 'For Procurement Review' ? (pr) => {
+        onReject={user?.role === 'procurement' && previewPR?.status === 'For Procurement Review' ? (pr) => {
           closePreview()
           openProcurementReject(pr)
         } : undefined}

@@ -1,3 +1,4 @@
+/* global clients */
 self.addEventListener('push', function (event) {
   if (event.data) {
     try {
