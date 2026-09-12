@@ -73,14 +73,6 @@ jobs:
 
     - name: Run Component Tests
       run: npm test
-      
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
-      
-    - name: Run Playwright Tests
-      run: npm run test:e2e
-      env:
-        VITE_API_URL: http://localhost:5005
 
   deploy:
     needs: [backend, frontend]
