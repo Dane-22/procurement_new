@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import api from '../services/api';
+import { useSocket } from '../context/SocketContext';
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return '';
@@ -36,12 +37,32 @@ export default function PRManagementScreen({ navigation }) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [statusFilter, setStatusFilter] = useState(''); // Empty means all
+  const socket = useSocket();
 
   useEffect(() => {
     setPage(1);
     setHasMore(true);
     fetchRequests(1, true);
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (socket) {
+      const handleUpdate = () => {
+        // Reset to page 1 and refetch
+        setPage(1);
+        setHasMore(true);
+        fetchRequests(1, true);
+      };
+
+      socket.on('pr_updated', handleUpdate);
+      socket.on('new_pr', handleUpdate);
+
+      return () => {
+        socket.off('pr_updated', handleUpdate);
+        socket.off('new_pr', handleUpdate);
+      };
+    }
+  }, [socket, statusFilter]);
 
   const fetchRequests = async (pageNum = page, reset = false) => {
     if (reset) {
@@ -110,7 +131,7 @@ export default function PRManagementScreen({ navigation }) {
     return { bg: '#f3f4f6', text: '#4b5563', border: '#9ca3af' }; // Soft Gray
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = useCallback(({ item }) => {
     const statusStyle = getStatusStyle(item.status);
     return (
       <TouchableOpacity 
@@ -148,7 +169,7 @@ export default function PRManagementScreen({ navigation }) {
         </TouchableOpacity>
       </TouchableOpacity>
     );
-  };
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -181,6 +202,10 @@ export default function PRManagementScreen({ navigation }) {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContainer}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
           ListEmptyComponent={<Text style={styles.emptyText}>No requests found</Text>}
           onEndReached={loadMoreRequests}
           onEndReachedThreshold={0.5}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ScrollView, Modal, FlatList, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import Animated, { FadeIn, FadeInDown, SlideInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api, { BASE_URL } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -317,13 +318,13 @@ export default function CreateRequestScreen({ route, navigation }) {
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 120 }} bounces={false}>
+        <Animated.ScrollView entering={FadeIn} style={styles.container} contentContainerStyle={{ paddingBottom: 120 }} bounces={false}>
           <View style={[styles.headerGradient, { backgroundColor: '#FFBF00' }]}>
             <Text style={styles.title}>{editMode ? 'Edit Request' : 'New Request'}</Text>
             <Text style={styles.subtitle}>{editMode ? 'Update your request details' : 'Submit items for procurement processing'}</Text>
           </View>
       
-      <View style={styles.formSection}>
+      <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.formSection}>
         <View style={styles.card}>
           <View style={styles.formGroup}>
             <Text style={styles.label}>Site / Project Name <Text style={{ color: '#EF4444' }}>*</Text></Text>
@@ -425,7 +426,7 @@ export default function CreateRequestScreen({ route, navigation }) {
           </View>
         ) : (
           items.map((item, index) => (
-            <View key={index} style={styles.itemCard}>
+            <Animated.View entering={SlideInUp.delay(index * 50).springify()} key={index} style={styles.itemCard}>
               <View style={styles.itemIconContainer}>
                 <MaterialIcons name="category" size={20} color="#64748b" />
               </View>
@@ -457,7 +458,7 @@ export default function CreateRequestScreen({ route, navigation }) {
               <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}>
                 <MaterialIcons name="delete-outline" size={24} color="#ef4444" />
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           ))
         )}
 
@@ -484,7 +485,7 @@ export default function CreateRequestScreen({ route, navigation }) {
             {loading ? (editMode ? 'Updating...' : 'Submitting...') : (editMode ? 'Update Request' : 'Submit Request')}
           </Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* Item Search Modal */}
       <Modal visible={searchModalVisible} animationType="slide" transparent>
@@ -601,7 +602,7 @@ export default function CreateRequestScreen({ route, navigation }) {
         </View>
       </Modal>
 
-        </ScrollView>
+        </Animated.ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

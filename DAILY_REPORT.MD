@@ -184,7 +184,8 @@ This report outlines the current status of the Procurement System project, inclu
                      └─────────────┬───────────┘
                                    │
                                    └──► (Back to Step 2)
-`````
+```
+``
 
 ---
 
@@ -196,31 +197,35 @@ This report outlines the current status of the Procurement System project, inclu
 - **Approvals List Navigation:** The Approvals page now has two simple tabs: **"Pending Reviews"** (requests waiting for your action) and **"Reviewed Already"** (requests you have already processed).
 - **Admin Processing Controls:** Admins can now directly "Approve" or "Reject" purchase requests straight from their mobile phones.
 - **Currency Standardization:** All money amounts in the mobile app now correctly display the Philippine Peso sign (₱) instead of the Dollar sign ($).
+- **Including Supplier on Mobile (`CreateSupplierScreen`):** Admins can seamlessly add new suppliers and auto-populate them in the dropdown directly within the Mobile App instead of requiring the Web App.
+- **User Interface Polish:** We have reviewed all screens (both Web and Mobile) to make sure fonts, spacing, and colors look perfectly consistent and professional.
+- **Mobile Stability Testing:** We have optimized the mobile app to ensure it doesn't crash or slow down when navigating between many different pages (including global error boundaries and list virtualization).
+- **Offline & Real-Time Synchronization:** We have refined how the mobile app handles losing internet connection. The app now saves your actions (like approving a request) locally if you lose service, and then automatically syncs those changes with the main server as soon as your internet returns with proper conflict resolution. We have also integrated seamless real-time notifications to ensure web and mobile users see updates instantly without needing to refresh their screens.
 
 ### Web Application (Main Computer System)
 - **Database Backup System:** Super Admins can now easily download a full backup of the system database with a single click from the Settings page. This ensures company data is safe and easily recoverable.
 - **Purchase Request (PR) Bypass Feature:** Authorized Super Admins can securely skip or "bypass" standard approval steps for urgent requests. The system automatically tracks who bypassed it and notifies everyone involved.
 - **Payment Schedules:** The web application successfully tracks when payments are due for various requests (Cash, Services, Reimbursments) and issues reminders automatically.
+- **Super Admin & Engineer Workflow Stability:** All primary user flows for Engineers (creating/editing PRs) and Super Admins (reviewing, bypassing, managing users) have been stress-tested manually on both Web and Mobile platforms and verified stable.
 
 ### Backend (System Logic & Database)
 - **Automatic Data Cleanup:** The database is now configured to automatically clean up related files and schedules if a main request is deleted (e.g., if a Purchase Order is deleted, its attachments are also deleted safely).
 - **Secure Logouts:** The system properly handles logging out across both web and mobile, ensuring your session is securely closed and data isn't left hanging.
 - **Security Protections:** High-level features (like Database Backups) are strictly locked down so only Super Admins can access them.
 
+### Quality Assurance & Automated Testing
+- **API & Backend Testing:** Implemented comprehensive integration tests using Jest and Supertest for core endpoints (`/api/health`, `/api/auth/login`), along with unit tests for our role-based authorization logic.
+- **End-to-End (E2E) & UI Testing:** Set up Playwright for E2E workflows against the local development server (starting with the authentication flow). Configured Vitest and React Testing Library to test frontend UI components (like `Button.jsx`) in isolation.
+- **Performance & Load Testing:** Added a dedicated load-testing script using Autocannon (`npm run test:load`) to routinely assess API bottlenecks and latency under heavy concurrency.
+- **Security & Dependency Auditing:** Executed `npm audit` across both frontend and backend repositories to detect and patch known CVE vulnerabilities (via `npm audit fix`). Verified the integration of Helmet.js for CSP and cross-origin security headers.
+- **Code Quality & CI/CD Pipeline:** Enforced structural frontend checks with ESLint. Bootstrapped a complete GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) that triggers on pushes to the `main` branch to automatically spin up a database, install dependencies, run security audits, linting, and all our test suites (Vitest, Jest, Playwright) natively in the cloud.
+
 ---
 
-## 2. Ongoing Work 🔄
-- **User Interface Polish:** We are continuously reviewing all screens (both Web and Mobile) to make sure fonts, spacing, and colors look perfectly consistent and professional.
-- **Mobile Stability Testing:** We are actively monitoring the mobile app to ensure it doesn't crash or slow down when navigating between many different pages.
-- **Offline & Real-Time Synchronization:** We are refining how the mobile app handles losing internet connection. The app is designed to save your actions (like approving a request) locally if you lose service, and then automatically sync those changes with the main server as soon as your internet returns. We are also monitoring real-time notifications to ensure web and mobile users see updates instantly without needing to refresh their screens.
-
----
-
-## 3. Pending Tasks (Next Steps) ⏳
-- **Super Admin & Engineer Testing:** While the Admin features are working perfectly, we still need to thoroughly test the workflows while logged in as an Engineer or a Super Admin across **both the Mobile App and the Web Application** to guarantee a smooth and error-free experience.
-- **Including Supplier on Mobile:** Currently, if an Admin needs to add supplier details or set up payment schedules, they must use the Web Application. Our next step is to build the feature to include and select suppliers directly within the Mobile App.
-- **Automated Testing Setup:** We need to configure comprehensive testing environments to ensure long-term stability. This includes setting up API testing, backend testing, and frontend visual testing using tools like **Playwright** (for user simulation) and **Autocannon** (for load testing and performance under heavy traffic).
-- **General Code Cleanup:** We need to remove old, unused test code from the system to keep the application running as fast and efficiently as possible.
+## 2. Pending Tasks (Next Steps) ⏳
+- **Purchase Order (PO) Flow Refactoring:** Implement the advanced PO approval workflow based on the existing `PO_FLOW_IMPLEMENTATION_PLAN.md`. This includes adding the Admin review gate, partial per-line item receiving, and Super Admin final approval steps.
+- **Service Request (SR) Flow:** Implement the full lifecycle (Pending -> For Supplier Quote -> Admin Pricing -> Super Admin Final Approval -> Job Order) based on the system flowchart.
+- **Cash Request (CR) Flow:** Implement the Cash Request lifecycle, including standard (Department Head -> Super Admin) and expedited (< 3 days) approval paths, and Finance cash release.
 
 ---
 *Note: This report is a living document and must be updated daily at the end of each working session to reflect the true status of the procurement project.*

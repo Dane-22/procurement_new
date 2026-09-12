@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { useSocket } from '../context/SocketContext';
 
 export default function DashboardScreen({ navigation }) {
   const [stats, setStats] = useState(null);
@@ -12,10 +13,32 @@ export default function DashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [myRecentRequests, setMyRecentRequests] = useState([]);
   const [companyRecentRequests, setCompanyRecentRequests] = useState([]);
+  const socket = useSocket();
 
   useEffect(() => {
     loadUserAndStats();
   }, []);
+
+  useEffect(() => {
+    if (socket) {
+      const handleUpdate = () => {
+        // Fetch new data when a PR is updated or created
+        if (user) {
+          fetchDashboardStats(user);
+        } else {
+          loadUserAndStats();
+        }
+      };
+
+      socket.on('pr_updated', handleUpdate);
+      socket.on('new_pr', handleUpdate);
+
+      return () => {
+        socket.off('pr_updated', handleUpdate);
+        socket.off('new_pr', handleUpdate);
+      };
+    }
+  }, [socket, user]);
 
   const loadUserAndStats = async () => {
     try {

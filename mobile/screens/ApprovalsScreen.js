@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, FlatList, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { useSocket } from '../context/SocketContext';
 
 export default function ApprovalsScreen() {
   const [requests, setRequests] = useState([]);
@@ -11,12 +12,29 @@ export default function ApprovalsScreen() {
   const [filter, setFilter] = useState('pending'); // 'pending' or 'reviewed'
   const navigation = useNavigation();
   const isFocused = useIsFocused();
+  const socket = useSocket();
 
   useEffect(() => {
     if (isFocused) {
       fetchUserAndRequests();
     }
   }, [isFocused, filter]);
+
+  useEffect(() => {
+    if (socket) {
+      const handleUpdate = () => {
+        fetchUserAndRequests();
+      };
+
+      socket.on('pr_updated', handleUpdate);
+      socket.on('new_pr', handleUpdate);
+
+      return () => {
+        socket.off('pr_updated', handleUpdate);
+        socket.off('new_pr', handleUpdate);
+      };
+    }
+  }, [socket, filter]);
 
   const fetchUserAndRequests = async () => {
     setLoading(true);
@@ -40,10 +58,11 @@ export default function ApprovalsScreen() {
     }
   };
 
-  const handleReview = (id) => {
+  const handleReview = useCallback((id) => {
     navigation.navigate('PRReview', { prId: id });
-  };
-  const renderItem = ({ item }) => {
+  }, [navigation]);
+  
+  const renderItem = useCallback(({ item }) => {
     const requesterName = `${item.requester_first_name || ''} ${item.requester_last_name || ''}`.trim() || 'Unknown Requester';
 
     return (
@@ -68,7 +87,7 @@ export default function ApprovalsScreen() {
       </View>
     </View>
   );
-};
+  }, [filter, navigation, handleReview]);
 
   if (loading) {
     return (
@@ -100,6 +119,10 @@ export default function ApprovalsScreen() {
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.listContainer}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
         ListEmptyComponent={<Text style={styles.emptyText}>{filter === 'pending' ? 'No pending approvals right now!' : 'No reviewed requests yet.'}</Text>}
       />
     </View>

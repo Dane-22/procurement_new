@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView, Alert } fr
 import { MaterialIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
-import { AuthContext } from '../App';
+import { AuthContext } from '../context/AuthContext';
 import { useContext } from 'react';
 
 export default function ProfileScreen({ navigation }) {

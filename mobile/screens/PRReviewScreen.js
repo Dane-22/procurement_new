@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ActivityIndicator, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import api from '../services/api';
 import * as SecureStore from 'expo-secure-store';
+import NetInfo from '@react-native-community/netinfo';
+import { addPendingRequest } from '../services/offlineSync';
 
 const REVIEW_STATUSES = new Set([
   'For Engineer Review',
@@ -75,29 +78,79 @@ export default function PRReviewScreen({ route, navigation }) {
 
   const handleApprove = async () => {
     try {
-      if (REVIEW_STATUSES.has(pr.status)) {
-        await api.post(`/purchase-requests/${prId}/review`, { review_status: 'approved', review_comment: '' });
+      const isReview = REVIEW_STATUSES.has(pr.status);
+      const endpoint = isReview ? `/purchase-requests/${prId}/review` : `/purchase-requests/${prId}/approve`;
+      const method = isReview ? 'POST' : 'PUT';
+      const payload = isReview 
+        ? { review_status: 'approved', review_comment: '', expectedStatus: pr.status }
+        : { status: 'For Purchase', remarks: '', expectedStatus: pr.status };
+
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        await addPendingRequest(endpoint, method, payload);
+        Alert.alert('Offline Mode', 'No internet connection. Approval saved offline and will sync automatically when online.');
       } else {
-        await api.put(`/purchase-requests/${prId}/approve`, { status: 'For Purchase', remarks: '' });
+        if (method === 'POST') {
+          await api.post(endpoint, payload);
+        } else {
+          await api.put(endpoint, payload);
+        }
+        Alert.alert('Success', 'Request approved');
       }
-      Alert.alert('Success', 'Request approved');
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', error?.response?.data?.message || 'Failed to approve request');
+      if (error.message && error.message.includes('Network Error')) {
+        const isReview = REVIEW_STATUSES.has(pr.status);
+        const endpoint = isReview ? `/purchase-requests/${prId}/review` : `/purchase-requests/${prId}/approve`;
+        const method = isReview ? 'POST' : 'PUT';
+        const payload = isReview 
+          ? { review_status: 'approved', review_comment: '', expectedStatus: pr.status }
+          : { status: 'For Purchase', remarks: '', expectedStatus: pr.status };
+        await addPendingRequest(endpoint, method, payload);
+        Alert.alert('Offline Mode', 'Network failed. Approval saved offline and will sync when online.');
+        navigation.goBack();
+      } else {
+        Alert.alert('Error', error?.response?.data?.message || 'Failed to approve request');
+      }
     }
   };
 
   const handleReject = async () => {
     try {
-      if (REVIEW_STATUSES.has(pr.status)) {
-        await api.post(`/purchase-requests/${prId}/review`, { review_status: 'rejected', review_comment: 'Rejected from mobile' });
+      const isReview = REVIEW_STATUSES.has(pr.status);
+      const endpoint = isReview ? `/purchase-requests/${prId}/review` : `/purchase-requests/${prId}/approve`;
+      const method = isReview ? 'POST' : 'PUT';
+      const payload = isReview 
+        ? { review_status: 'rejected', review_comment: 'Rejected from mobile', expectedStatus: pr.status }
+        : { status: 'Rejected', remarks: 'Rejected from mobile', expectedStatus: pr.status };
+
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        await addPendingRequest(endpoint, method, payload);
+        Alert.alert('Offline Mode', 'No internet connection. Rejection saved offline and will sync automatically when online.');
       } else {
-        await api.put(`/purchase-requests/${prId}/approve`, { status: 'Rejected', remarks: 'Rejected from mobile' });
+        if (method === 'POST') {
+          await api.post(endpoint, payload);
+        } else {
+          await api.put(endpoint, payload);
+        }
+        Alert.alert('Success', 'Request rejected');
       }
-      Alert.alert('Success', 'Request rejected');
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', error?.response?.data?.message || 'Failed to reject request');
+      if (error.message && error.message.includes('Network Error')) {
+        const isReview = REVIEW_STATUSES.has(pr.status);
+        const endpoint = isReview ? `/purchase-requests/${prId}/review` : `/purchase-requests/${prId}/approve`;
+        const method = isReview ? 'POST' : 'PUT';
+        const payload = isReview 
+          ? { review_status: 'rejected', review_comment: 'Rejected from mobile', expectedStatus: pr.status }
+          : { status: 'Rejected', remarks: 'Rejected from mobile', expectedStatus: pr.status };
+        await addPendingRequest(endpoint, method, payload);
+        Alert.alert('Offline Mode', 'Network failed. Rejection saved offline and will sync when online.');
+        navigation.goBack();
+      } else {
+        Alert.alert('Error', error?.response?.data?.message || 'Failed to reject request');
+      }
     }
   };
 
@@ -125,6 +178,10 @@ export default function PRReviewScreen({ route, navigation }) {
     return false;
   };
 
+  const needsProcessing = () => {
+    return (pr.status === 'For Admin Processing' || pr.status === 'Pending Admin Processing') && userRole === 'admin';
+  };
+
   const reviewRecords = Array.isArray(pr.reviews)
     ? pr.reviews.filter(review => review.reviewer_is_active === undefined || Boolean(review.reviewer_is_active))
     : [];
@@ -138,10 +195,10 @@ export default function PRReviewScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <Animated.ScrollView contentContainerStyle={styles.scrollContent} entering={FadeIn}>
         
         {/* Main Details Card */}
-        <View style={styles.card}>
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.card}>
           <Text style={styles.title}>Review: PR #{pr.pr_number}</Text>
           <View style={styles.status}><Text style={styles.statusText}>{pr.status}</Text></View>
 
@@ -171,10 +228,10 @@ export default function PRReviewScreen({ route, navigation }) {
               <Text style={styles.detailValue}>{pr.remarks}</Text>
             </View>
           ) : null}
-        </View>
+        </Animated.View>
 
         {/* Reviewer Status Card */}
-        <View style={styles.card}>
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.card}>
           <Text style={styles.sectionTitle}>{currentReviewStage.label ? currentReviewStage.label.toUpperCase() : 'REVIEW'}</Text>
           <View style={styles.progressRow}>
             <Text style={styles.progressText}>
@@ -197,12 +254,12 @@ export default function PRReviewScreen({ route, navigation }) {
               </Text>
             </View>
           )}
-        </View>
+        </Animated.View>
 
         {/* Items Card */}
-        <Text style={styles.itemsHeader}>Requested Items</Text>
+        <Animated.Text entering={FadeInDown.delay(300).springify()} style={styles.itemsHeader}>Requested Items</Animated.Text>
         {pr.items && pr.items.map((item, index) => (
-          <View key={item.id || index} style={styles.itemCard}>
+          <Animated.View entering={FadeInDown.delay(350 + (index * 50)).springify()} key={item.id || index} style={styles.itemCard}>
             <View style={styles.itemTitleRow}>
               <Text style={styles.itemDesc}>{item.item_name}</Text>
             </View>
@@ -220,27 +277,35 @@ export default function PRReviewScreen({ route, navigation }) {
                 <Text style={styles.gridAmount}>₱{parseFloat(item.total_price || 0).toFixed(2)}</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
         ))}
 
-        <View style={styles.totalRow}>
+        <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total Amount:</Text>
           <Text style={styles.totalAmount}>₱{parseFloat(pr.total_amount || 0).toFixed(2)}</Text>
-        </View>
+        </Animated.View>
 
         <View style={styles.bottomPadding} />
-      </ScrollView>
+      </Animated.ScrollView>
 
       {/* Fixed Bottom Action Bar */}
       {canApprove() && (
-        <View style={styles.bottomActionBar}>
-          <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn]} onPress={handleReject}>
-            <Text style={styles.actionBtnText}>Reject</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionBtn, styles.approveBtn]} onPress={handleApprove}>
-            <Text style={styles.actionBtnText}>Approve</Text>
-          </TouchableOpacity>
-        </View>
+        <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.bottomActionBar}>
+          {needsProcessing() ? (
+            <TouchableOpacity style={[styles.actionBtn, styles.processBtn]} onPress={() => navigation.navigate('ProcessPR', { prId: pr.id || prId })}>
+              <Text style={styles.actionBtnText}>Process Request</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn]} onPress={handleReject}>
+                <Text style={styles.actionBtnText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, styles.approveBtn]} onPress={handleApprove}>
+                <Text style={styles.actionBtnText}>Approve</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </Animated.View>
       )}
     </SafeAreaView>
   );
@@ -447,6 +512,9 @@ const styles = StyleSheet.create({
   },
   approveBtn: {
     backgroundColor: '#FFBF00',
+  },
+  processBtn: {
+    backgroundColor: '#3b82f6',
   },
   rejectBtn: {
     backgroundColor: '#1f2937',

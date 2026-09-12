@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 import api from './api';
 
 let db;
@@ -63,11 +64,32 @@ export const syncPendingRequests = async () => {
       try {
         const payload = JSON.parse(row.payload);
         
+        // --- Conflict Resolution (Server-Wins with Status Validation) ---
+        const prMatch = row.endpoint.match(/\/purchase-requests\/(\d+)/);
+        if (prMatch && payload.expectedStatus) {
+           const prId = prMatch[1];
+           try {
+             const statusRes = await api.get(`/purchase-requests/${prId}`);
+             const currentStatus = statusRes.data.status || statusRes.data.purchaseRequest?.status;
+             if (currentStatus && currentStatus !== payload.expectedStatus) {
+                 console.warn(`Conflict detected for PR ${prId}. Expected ${payload.expectedStatus} but got ${currentStatus}.`);
+                 await db.runAsync('DELETE FROM pending_requests WHERE id = ?', [row.id]);
+                 Alert.alert('Sync Conflict', `Failed to sync action for PR #${prId} because it was modified by someone else.`);
+                 continue; // skip sending this request
+             }
+           } catch (e) {
+             console.log('Could not verify PR status, proceeding anyway...', e.message);
+           }
+        }
+        
+        // Remove expectedStatus from payload before sending
+        const { expectedStatus, ...dataToSubmit } = payload;
+        
         // Use the API service to make the request
         if (row.method.toUpperCase() === 'POST') {
-          await api.post(row.endpoint, payload);
+          await api.post(row.endpoint, dataToSubmit);
         } else if (row.method.toUpperCase() === 'PUT') {
-          await api.put(row.endpoint, payload);
+          await api.put(row.endpoint, dataToSubmit);
         }
         
         // On success, delete from local DB

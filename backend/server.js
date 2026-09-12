@@ -207,15 +207,17 @@ app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-  logger.info(`Server running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV}`);
-  if (paymentReminderEnabled) {
-    startPaymentScheduleReminderJob();
-    logger.info('Payment schedule reminder job started');
-  } else {
-    logger.info('Payment schedule reminder job is disabled');
-  }
-});
+if (process.env.NODE_ENV !== 'test') {
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Server running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV}`);
+    if (paymentReminderEnabled) {
+      startPaymentScheduleReminderJob();
+      logger.info('Payment schedule reminder job started');
+    } else {
+      logger.info('Payment schedule reminder job is disabled');
+    }
+  });
+}
 
-export { io };
+export { app, io };

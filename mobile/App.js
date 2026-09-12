@@ -15,10 +15,12 @@ import CreateRequestScreen from './screens/CreateRequestScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import PRReviewScreen from './screens/PRReviewScreen';
 import ApprovalsScreen from './screens/ApprovalsScreen';
+import ProcessPRScreen from './screens/ProcessPRScreen';
+import CreateSupplierScreen from './screens/CreateSupplierScreen';
 import { initDB, setupNetworkListener } from './services/offlineSync';
-import { createContext } from 'react';
-
-export const AuthContext = createContext(null);
+import { AuthContext } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
+import { NavigationTheme, colors } from './theme';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -46,20 +48,20 @@ function MainTabs() {
 
           return <MaterialIcons name={iconName} size={focused ? 28 : 24} color={color} />;
         },
-        tabBarActiveTintColor: '#1E293B',
-        tabBarInactiveTintColor: '#94a3b8',
+        tabBarActiveTintColor: colors.secondary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           borderTopWidth: 1,
-          borderTopColor: '#E2E8F0',
+          borderTopColor: colors.border,
           elevation: 0,
           shadowOpacity: 0,
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           paddingTop: 8,
-          backgroundColor: '#ffffff',
+          backgroundColor: colors.surface,
         },
-        headerStyle: { backgroundColor: '#FFBF00', elevation: 0, shadowOpacity: 0 },
-        headerTintColor: '#1E293B',
+        headerStyle: { backgroundColor: colors.primary, elevation: 0, shadowOpacity: 0 },
+        headerTintColor: colors.secondary,
         headerTitleStyle: { fontWeight: '800' },
       })}
     >
@@ -73,6 +75,7 @@ function MainTabs() {
 }
 
 import { usePushNotifications } from './hooks/usePushNotifications';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -87,42 +90,56 @@ export default function App() {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, setUser }}>
-      <NavigationContainer>
-        {!user ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Landing" component={LandingScreen} />
-          <Stack.Screen name="Login">
-            {(props) => <LoginScreen {...props} onLoginSuccess={setUser} />}
-          </Stack.Screen>
-        </Stack.Navigator>
-      ) : (
-        <Stack.Navigator>
-          <Stack.Screen 
-            name="MainTabs" 
-            component={MainTabs} 
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="PRDetail" 
-            component={PRDetailScreen} 
-            options={{ title: 'Purchase Request Details' }}
-          />
-          <Stack.Screen 
-            name="PRReview" 
-            component={PRReviewScreen} 
-            options={{ title: 'Review Request' }}
-          />
-          <Stack.Screen 
-            name="EditRequest" 
-            component={CreateRequestScreen} 
-            options={{ title: 'Edit Request' }}
-          />
-        </Stack.Navigator>
-      )}
-      <StatusBar style="auto" />
-    </NavigationContainer>
+    <ErrorBoundary>
+      <AuthContext.Provider value={{ user, setUser }}>
+        <SocketProvider>
+          <NavigationContainer theme={NavigationTheme}>
+          {!user ? (
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Landing" component={LandingScreen} />
+              <Stack.Screen name="Login">
+                {(props) => <LoginScreen {...props} onLoginSuccess={setUser} />}
+              </Stack.Screen>
+            </Stack.Navigator>
+          ) : (
+            <Stack.Navigator>
+              <Stack.Screen 
+                name="MainTabs" 
+                component={MainTabs} 
+                options={{ headerShown: false }} 
+              />
+              <Stack.Screen 
+                name="PRDetail" 
+                component={PRDetailScreen} 
+                options={{ title: 'Purchase Request Details' }}
+              />
+              <Stack.Screen 
+                name="PRReview" 
+                component={PRReviewScreen} 
+                options={{ title: 'Review Request' }}
+              />
+              <Stack.Screen 
+                name="ProcessPR" 
+                component={ProcessPRScreen} 
+                options={{ title: 'Process Request' }}
+              />
+              <Stack.Screen 
+                name="EditRequest" 
+                component={CreateRequestScreen} 
+                options={{ title: 'Edit Request' }}
+              />
+              <Stack.Screen 
+                name="CreateSupplier" 
+                component={CreateSupplierScreen} 
+                options={{ title: 'Add New Supplier' }}
+              />
+            </Stack.Navigator>
+          )}
+          <StatusBar style="auto" />
+        </NavigationContainer>
+      </SocketProvider>
     </AuthContext.Provider>
+    </ErrorBoundary>
   );
 }
 

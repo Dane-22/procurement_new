@@ -124,6 +124,14 @@ export default function PRDetailScreen({ route, navigation }) {
             <Text style={styles.label}>Total Amount:</Text>
             <Text style={styles.amount}>₱{parseFloat(pr.total_amount).toFixed(2)}</Text>
           </View>
+          {pr.is_bypassed ? (
+            <View style={styles.row}>
+              <Text style={styles.label}>Bypassed By:</Text>
+              <Text style={[styles.value, { color: '#d97706', fontWeight: 'bold' }]}>
+                {`${pr.bypassed_by_first_name || ''} ${pr.bypassed_by_last_name || ''}`.trim() || 'Super Admin'}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Action Buttons */}
