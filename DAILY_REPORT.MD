@@ -226,6 +226,7 @@ This report outlines the current status of the Procurement System project, inclu
 - **Purchase Order (PO) Flow Refactoring:** Implement the advanced PO approval workflow based on the existing `PO_FLOW_IMPLEMENTATION_PLAN.md`. This includes adding the Admin review gate, partial per-line item receiving, and Super Admin final approval steps.
 - **Service Request (SR) Flow:** Implement the full lifecycle (Pending -> For Supplier Quote -> Admin Pricing -> Super Admin Final Approval -> Job Order) based on the system flowchart.
 - **Cash Request (CR) Flow:** Implement the Cash Request lifecycle, including standard (Department Head -> Super Admin) and expedited (< 3 days) approval paths, and Finance cash release.
+- **iOS Mobile Support & Testing:** The mobile application is currently fully functional and tested on Android, but it is not yet tested or compiled for iOS due to the lack of an iOS development device. Compiling and verifying iOS functionality is required before a cross-platform release.
 
 ---
 *Note: This report is a living document and must be updated daily at the end of each working session to reflect the true status of the procurement project.*
