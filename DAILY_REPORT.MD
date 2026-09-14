@@ -201,8 +201,10 @@ This report outlines the current status of the Procurement System project, inclu
 - **User Interface Polish:** We have reviewed all screens (both Web and Mobile) to make sure fonts, spacing, and colors look perfectly consistent and professional.
 - **Mobile Stability Testing:** We have optimized the mobile app to ensure it doesn't crash or slow down when navigating between many different pages (including global error boundaries and list virtualization).
 - **Offline & Real-Time Synchronization:** We have refined how the mobile app handles losing internet connection. The app now saves your actions (like approving a request) locally if you lose service, and then automatically syncs those changes with the main server as soon as your internet returns with proper conflict resolution. We have also integrated seamless real-time notifications to ensure web and mobile users see updates instantly without needing to refresh their screens.
+- **iOS Mobile Support & Testing:** Successfully resolved Expo Go and React Native version compatibility issues (including Babel configurations and native worklet dependencies). The mobile app now compiles properly and supports testing across both iOS (via Expo Go on physical devices) and Android (via AVD and Expo Go) platforms.
 
 ### Web Application (Main Computer System)
+- **Enhanced System Audit Logs:** The web application now features a completely revamped Audit Log interface for Super Admins. It includes dynamic backend-driven filters with a premium Tailwind UI aesthetic, a responsive filter grid with integrated date-range pickers, advanced search, a detailed viewer modal for inspecting payload changes, and a robust "Export to CSV" functionality for compliance reporting.
 - **Database Backup System:** Super Admins can now easily download a full backup of the system database with a single click from the Settings page. This ensures company data is safe and easily recoverable.
 - **Purchase Request (PR) Bypass Feature:** Authorized Super Admins can securely skip or "bypass" standard approval steps for urgent requests. The system automatically tracks who bypassed it and notifies everyone involved.
 - **Payment Schedules:** The web application successfully tracks when payments are due for various requests (Cash, Services, Reimbursments) and issues reminders automatically.
@@ -226,7 +228,6 @@ This report outlines the current status of the Procurement System project, inclu
 - **Purchase Order (PO) Flow Refactoring:** Implement the advanced PO approval workflow based on the existing `PO_FLOW_IMPLEMENTATION_PLAN.md`. This includes adding the Admin review gate, partial per-line item receiving, and Super Admin final approval steps.
 - **Service Request (SR) Flow:** Implement the full lifecycle (Pending -> For Supplier Quote -> Admin Pricing -> Super Admin Final Approval -> Job Order) based on the system flowchart.
 - **Cash Request (CR) Flow:** Implement the Cash Request lifecycle, including standard (Department Head -> Super Admin) and expedited (< 3 days) approval paths, and Finance cash release.
-- **iOS Mobile Support & Testing:** The mobile application is currently fully functional and tested on Android, but it is not yet tested or compiled for iOS due to the lack of an iOS development device. Compiling and verifying iOS functionality is required before a cross-platform release.
 
 ---
 *Note: This report is a living document and must be updated daily at the end of each working session to reflect the true status of the procurement project.*

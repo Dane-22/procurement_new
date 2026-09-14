@@ -32,9 +32,13 @@ export const typography = {
   caption: { fontSize: 12, color: colors.textMuted },
 };
 
+import { DefaultTheme } from '@react-navigation/native';
+
 export const NavigationTheme = {
+  ...DefaultTheme,
   dark: false,
   colors: {
+    ...DefaultTheme.colors,
     primary: colors.primary,
     background: colors.background,
     card: colors.surface,
