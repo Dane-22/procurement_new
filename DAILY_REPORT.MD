@@ -191,6 +191,9 @@ This report outlines the current status of the Procurement System project, inclu
 
 ## 1. Completed Features ✅
 
+### Codebase & Repository Management
+- **Repository Ownership Transfer:** We successfully transferred the local codebase to a new remote repository (`https://github.com/Dane-22/procurement_new.git`). This was done to secure the project's source code, as the former coworker who owned the original repository had resigned and was planning to delete it.
+
 ### Mobile Application (App for Phones & Tablets)
 - **Visual Design & Branding:** The entire mobile app has been redesigned to follow the company's official theme colors (Yellow and Dark Slate). Unappealing default colors (like basic blue/gray) have been completely removed.
 - **Requester Identification:** You can now clearly see the name of the person who requested an item (the "Requester") directly on the list of approvals. You no longer need to click into the details just to see who made the request.
