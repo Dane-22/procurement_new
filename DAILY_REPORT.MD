@@ -193,6 +193,7 @@ This report outlines the current status of the Procurement System project, inclu
 
 ### Codebase & Repository Management
 - **Repository Ownership Transfer:** We successfully transferred the local codebase to a new remote repository (`https://github.com/Dane-22/procurement_new.git`). This was done to secure the project's source code, as the former coworker who owned the original repository had resigned and was planning to delete it.
+- **CI/CD Pipeline Reconnection:** Successfully generated a new SSH keypair directly on the production VPS, added it to the server's authorized keys, and configured the new GitHub repository's secrets (`VPS_HOST`, `VPS_USERNAME`, `SSH_KEY`). We also repointed the live VPS server's local git origin to the new repository URL, ensuring that our automated deployments continue to function seamlessly.
 
 ### Mobile Application (App for Phones & Tablets)
 - **Visual Design & Branding:** The entire mobile app has been redesigned to follow the company's official theme colors (Yellow and Dark Slate). Unappealing default colors (like basic blue/gray) have been completely removed.
