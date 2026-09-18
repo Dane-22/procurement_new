@@ -298,6 +298,48 @@
 
 ---
 
+## 2.3 ITEM REQUEST FLOW (MOBILE APP)
+
+```text
+┌─────────────────┐
+│ Engineer        │
+│ Creates Item    │
+│ Request         │
+│ (Mobile App)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Status: FOR     │
+│ ADMIN PROCESSING│
+└────────┬────────┘
+         │
+         │ Admin enters supplier
+         │ and pricing info
+         ▼
+┌─────────────────┐
+│ Status: FOR     │
+│ ENGINEER REVIEW │
+│ (Admin Review   │
+│ is auto-approved│
+│ since Admin     │
+│ processed it)   │
+└────────┬────────┘
+         │
+         │ All Engineers Review
+         ▼
+┌─────────────────┐
+│ Status: FOR     │
+│ SUPER ADMIN REP │
+│ REVIEW          │
+└────────┬────────┘
+         │
+         ▼
+(Proceed to Super Admin Rep Review)
+```
+
+---
+
 ## 3. PURCHASE ORDER (PO) FLOW
 
 ```

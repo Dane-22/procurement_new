@@ -347,7 +347,7 @@ const Approvals = () => {
     pr.status === 'For Super Admin Final Approval' ||
     pr.status === 'For Engineer Review' ||
     pr.status === 'For Admin Review' ||
-    pr.status === 'For Admin Review'
+    pr.status === 'For Super Admin Rep Review'
   );
 
   const onHoldPRs = purchaseRequests.filter(pr => 
@@ -4177,6 +4177,7 @@ const Approvals = () => {
           onClose={() => setPreviewPR(null)}
           onApprove={handleApprovePR}
           onReject={handleRejectPR}
+          onHold={handleHoldPR}
           processingId={processingId}
         />
       )}

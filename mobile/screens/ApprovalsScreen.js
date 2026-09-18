@@ -4,6 +4,14 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
 import { useSocket } from '../context/SocketContext';
+import NetInfo from '@react-native-community/netinfo';
+import { addPendingRequest } from '../services/offlineSync';
+
+const REVIEW_STATUSES = new Set([
+  'For Engineer Review',
+  'For Admin Review',
+  'For Super Admin Rep Review'
+]);
 
 export default function ApprovalsScreen() {
   const [requests, setRequests] = useState([]);
@@ -13,6 +21,7 @@ export default function ApprovalsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [filter, setFilter] = useState('pending'); // 'pending' or 'reviewed'
+  const [processingId, setProcessingId] = useState(null);
   const navigation = useNavigation();
   const isFocused = useIsFocused();
   const socket = useSocket();
@@ -90,6 +99,116 @@ export default function ApprovalsScreen() {
   const handleReview = useCallback((id) => {
     navigation.navigate('PRReview', { prId: id });
   }, [navigation]);
+
+  const handleQuickApprove = useCallback((pr) => {
+    Alert.alert(
+      'Confirm Approval',
+      `Are you sure you want to approve PR #${pr.pr_number || pr.id}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Approve', 
+          style: 'default',
+          onPress: async () => {
+            setProcessingId(pr.id);
+            try {
+              const isReview = REVIEW_STATUSES.has(pr.status);
+              const endpoint = isReview ? `/purchase-requests/${pr.id}/review` : `/purchase-requests/${pr.id}/approve`;
+              const method = isReview ? 'POST' : 'PUT';
+              const payload = isReview 
+                ? { review_status: 'approved', review_comment: 'Approved from list', expectedStatus: pr.status }
+                : { status: 'For Purchase', remarks: 'Approved from list', expectedStatus: pr.status };
+
+              const netInfo = await NetInfo.fetch();
+              if (!netInfo.isConnected) {
+                await addPendingRequest(endpoint, method, payload);
+                Alert.alert('Offline Mode', 'Approval saved offline and will sync automatically.');
+              } else {
+                if (method === 'POST') {
+                  await api.post(endpoint, payload);
+                } else {
+                  await api.put(endpoint, payload);
+                }
+              }
+              // Remove from the list immediately upon success
+              setRequests(prev => prev.filter(item => item.id !== pr.id));
+            } catch (error) {
+              if (error.message && error.message.includes('Network Error')) {
+                const isReview = REVIEW_STATUSES.has(pr.status);
+                const endpoint = isReview ? `/purchase-requests/${pr.id}/review` : `/purchase-requests/${pr.id}/approve`;
+                const method = isReview ? 'POST' : 'PUT';
+                const payload = isReview 
+                  ? { review_status: 'approved', review_comment: 'Approved from list', expectedStatus: pr.status }
+                  : { status: 'For Purchase', remarks: 'Approved from list', expectedStatus: pr.status };
+                await addPendingRequest(endpoint, method, payload);
+                Alert.alert('Offline Mode', 'Network failed. Approval saved offline.');
+                setRequests(prev => prev.filter(item => item.id !== pr.id));
+              } else {
+                Alert.alert('Error', error?.response?.data?.message || 'Failed to approve request');
+              }
+            } finally {
+              setProcessingId(null);
+            }
+          }
+        }
+      ]
+    );
+  }, []);
+
+  const handleQuickReject = useCallback((pr) => {
+    Alert.alert(
+      'Confirm Rejection',
+      `Are you sure you want to reject PR #${pr.pr_number || pr.id}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reject', 
+          style: 'destructive',
+          onPress: async () => {
+            setProcessingId(pr.id);
+            try {
+              const isReview = REVIEW_STATUSES.has(pr.status);
+              const endpoint = isReview ? `/purchase-requests/${pr.id}/review` : `/purchase-requests/${pr.id}/approve`;
+              const method = isReview ? 'POST' : 'PUT';
+              const payload = isReview 
+                ? { review_status: 'rejected', review_comment: 'Rejected from quick actions', expectedStatus: pr.status }
+                : { status: 'Rejected', remarks: 'Rejected from quick actions', expectedStatus: pr.status };
+
+              const netInfo = await NetInfo.fetch();
+              if (!netInfo.isConnected) {
+                await addPendingRequest(endpoint, method, payload);
+                Alert.alert('Offline Mode', 'Rejection saved offline and will sync automatically.');
+              } else {
+                if (method === 'POST') {
+                  await api.post(endpoint, payload);
+                } else {
+                  await api.put(endpoint, payload);
+                }
+              }
+              // Remove from the list immediately upon success
+              setRequests(prev => prev.filter(item => item.id !== pr.id));
+            } catch (error) {
+              if (error.message && error.message.includes('Network Error')) {
+                const isReview = REVIEW_STATUSES.has(pr.status);
+                const endpoint = isReview ? `/purchase-requests/${pr.id}/review` : `/purchase-requests/${pr.id}/approve`;
+                const method = isReview ? 'POST' : 'PUT';
+                const payload = isReview 
+                  ? { review_status: 'rejected', review_comment: 'Rejected from quick actions', expectedStatus: pr.status }
+                  : { status: 'Rejected', remarks: 'Rejected from quick actions', expectedStatus: pr.status };
+                await addPendingRequest(endpoint, method, payload);
+                Alert.alert('Offline Mode', 'Network failed. Rejection saved offline.');
+                setRequests(prev => prev.filter(item => item.id !== pr.id));
+              } else {
+                Alert.alert('Error', error?.response?.data?.message || 'Failed to reject request');
+              }
+            } finally {
+              setProcessingId(null);
+            }
+          }
+        }
+      ]
+    );
+  }, []);
   
   const renderItem = useCallback(({ item }) => {
     const requesterName = `${item.requester_first_name || ''} ${item.requester_last_name || ''}`.trim() || 'Unknown Requester';
@@ -105,9 +224,23 @@ export default function ApprovalsScreen() {
         
         <View style={styles.actions}>
         {filter === 'pending' ? (
-          <TouchableOpacity style={[styles.button, styles.reviewBtn]} onPress={() => handleReview(item.id)}>
-            <Text style={styles.buttonText}>Review Request</Text>
-          </TouchableOpacity>
+          processingId === item.id ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#FFBF00" />
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity style={[styles.button, styles.smallBtn, styles.viewBtn]} onPress={() => handleReview(item.id)}>
+                <Text style={styles.buttonText}>View</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, styles.smallBtn, styles.rejectBtn]} onPress={() => handleQuickReject(item)}>
+                <Text style={styles.buttonText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, styles.smallBtn, styles.approveBtn]} onPress={() => handleQuickApprove(item)}>
+                <Text style={styles.buttonText}>Approve</Text>
+              </TouchableOpacity>
+            </>
+          )
         ) : (
           <TouchableOpacity style={[styles.button, styles.viewBtn]} onPress={() => navigation.navigate('PRDetail', { prId: item.id })}>
             <Text style={styles.buttonText}>View Details</Text>
@@ -116,7 +249,7 @@ export default function ApprovalsScreen() {
       </View>
     </View>
   );
-  }, [filter, navigation, handleReview]);
+  }, [filter, navigation, handleReview, handleQuickApprove, handleQuickReject, processingId]);
 
   if (loading) {
     return (
@@ -220,23 +353,42 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
+    gap: 8,
   },
   button: {
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 6,
-    marginLeft: 10, // simple gap fallback
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallBtn: {
+    paddingHorizontal: 12,
+  },
+  approveBtn: {
+    backgroundColor: '#FFBF00',
+  },
+  rejectBtn: {
+    backgroundColor: '#1f2937',
   },
   reviewBtn: {
     backgroundColor: '#FFBF00',
   },
   viewBtn: {
-    backgroundColor: '#1f2937',
+    backgroundColor: '#6b7280',
   },
   buttonText: {
     color: 'white',
     fontWeight: 'bold',
+    fontSize: 13,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   tabContainer: {
     flexDirection: 'row',

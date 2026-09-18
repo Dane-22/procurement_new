@@ -154,6 +154,33 @@ export default function PRReviewScreen({ route, navigation }) {
     }
   };
 
+  const handleHold = async () => {
+    try {
+      const endpoint = `/purchase-requests/${prId}/status`;
+      const payload = { status: 'On Hold', remarks: 'Placed On Hold from mobile' };
+
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        await addPendingRequest(endpoint, 'PUT', payload);
+        Alert.alert('Offline Mode', 'No internet connection. Hold status saved offline and will sync automatically when online.');
+      } else {
+        await api.put(endpoint, payload);
+        Alert.alert('Success', 'Request placed On Hold');
+      }
+      navigation.goBack();
+    } catch (error) {
+      if (error.message && error.message.includes('Network Error')) {
+        const endpoint = `/purchase-requests/${prId}/status`;
+        const payload = { status: 'On Hold', remarks: 'Placed On Hold from mobile' };
+        await addPendingRequest(endpoint, 'PUT', payload);
+        Alert.alert('Offline Mode', 'Network failed. Hold status saved offline and will sync when online.');
+        navigation.goBack();
+      } else {
+        Alert.alert('Error', error?.response?.data?.message || 'Failed to hold request');
+      }
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -288,24 +315,35 @@ export default function PRReviewScreen({ route, navigation }) {
         <View style={styles.bottomPadding} />
       </Animated.ScrollView>
 
-      {/* Fixed Bottom Action Bar */}
-      {canApprove() && (
-        <Animated.View entering={FadeInDown.delay(600).springify()} style={styles.bottomActionBar}>
-          {needsProcessing() ? (
-            <TouchableOpacity style={[styles.actionBtn, styles.processBtn]} onPress={() => navigation.navigate('ProcessPR', { prId: pr.id || prId })}>
-              <Text style={styles.actionBtnText}>Process Request</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
+      {/* Bottom Fixed Action Bar */}
+      {(pr.status !== 'Completed' && pr.status !== 'Rejected') && (
+        <View style={styles.bottomPadding}>
+          <View style={styles.bottomActionBar}>
+            {(canApprove() || (userRole === 'super_admin' && pr.status !== 'On Hold')) && !needsProcessing() && (
+              <TouchableOpacity style={[styles.actionBtn, styles.holdBtn]} onPress={handleHold}>
+                <Text style={styles.actionBtnText}>Hold</Text>
+              </TouchableOpacity>
+            )}
+            
+            {(canApprove() || userRole === 'super_admin') && !needsProcessing() && (
               <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn]} onPress={handleReject}>
                 <Text style={styles.actionBtnText}>Reject</Text>
               </TouchableOpacity>
+            )}
+            
+            {canApprove() && !needsProcessing() && (
               <TouchableOpacity style={[styles.actionBtn, styles.approveBtn]} onPress={handleApprove}>
                 <Text style={styles.actionBtnText}>Approve</Text>
               </TouchableOpacity>
-            </>
-          )}
-        </Animated.View>
+            )}
+
+            {needsProcessing() && (
+              <TouchableOpacity style={[styles.actionBtn, styles.processBtn]} onPress={() => Alert.alert('Processing', 'Redirecting to process items...')}>
+                <Text style={styles.actionBtnText}>Process Items</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -517,7 +555,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
   },
   rejectBtn: {
-    backgroundColor: '#1f2937',
+    backgroundColor: '#ef4444',
+  },
+  holdBtn: {
+    backgroundColor: '#6b7280',
   },
   actionBtnText: {
     color: 'white',

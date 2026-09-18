@@ -94,7 +94,8 @@ const getReviewerRoleLabel = (role) => {
     engineer: 'Engineer',
     admin: 'Admin',
     procurement: 'Procurement',
-    super_admin: 'Super Admin'
+    super_admin: 'Super Admin',
+    super_admin_rep: 'Super Admin Rep'
   };
   return labels[role] || 'Reviewer';
 };
@@ -111,7 +112,9 @@ const getCurrentReviewStage = (status, requesterRole) => {
   const stages = {
     'For Engineer Review': { role: 'engineer', label: 'Engineer review' },
     'For Admin Review': { role: 'admin', label: 'Admin review' },
-    'For Procurement Review': { role: 'procurement', label: 'Procurement review' }
+    'For Procurement Review': { role: 'procurement', label: 'Procurement review' },
+    'For Super Admin Rep Review': { role: 'super_admin_rep', label: 'Super Admin Rep review' },
+    'For Super Admin Final Approval': { role: 'super_admin', label: 'Super Admin review' }
   };
 
   if (stages[status]) return stages[status];
@@ -146,6 +149,7 @@ const PRDetailsModal = ({
   onClose,
   onApprove,
   onReject,
+  onHold,
   processingId,
   readOnly
 }) => {
@@ -166,8 +170,7 @@ const PRDetailsModal = ({
   const stageApprovedReviewers = stageReviewers.filter(review => review.review_status === 'approved');
   const pendingReviewers = stageReviewers.filter(review =>
     review.review_status !== 'approved' &&
-    review.review_status !== 'rejected' &&
-    review.reviewer_role !== 'super_admin'
+    review.review_status !== 'rejected'
   );
   const formatReviewerList = (reviews) => reviews.map(getReviewerName).join(', ');
   
@@ -284,6 +287,12 @@ const PRDetailsModal = ({
     e.preventDefault();
     e.stopPropagation();
     onReject?.(pr);
+  };
+
+  const handleHold = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onHold?.(pr.id, pr);
   };
 
   return (
@@ -514,12 +523,24 @@ const PRDetailsModal = ({
               </Button>
             )}
 
-            {/* Render reject button if parent provided handler and action allowed, or if current user is a pending reviewer */}
-            {( (onReject && canAct) || userPendingReview ) && (
+            {/* Render hold button if provided and action allowed, or if super admin */}
+            {( (onHold && (canAct || user?.role === 'super_admin')) || (userPendingReview && onHold) ) && pr.status !== 'On Hold' && (
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={onHold && (canAct || user?.role === 'super_admin') ? handleHold : () => {}}
+                disabled={processingId === pr.id || submittingReview}
+              >
+                On Hold
+              </Button>
+            )}
+
+            {/* Render reject button if parent provided handler and action allowed, or if current user is a pending reviewer, or if super admin */}
+            {( (onReject && (canAct || user?.role === 'super_admin')) || userPendingReview ) && pr.status !== 'Rejected' && (
               <Button
                 variant="danger"
                 className="w-full sm:w-auto"
-                onClick={onReject && canAct ? handleReject : handleLocalReject}
+                onClick={onReject && (canAct || user?.role === 'super_admin') ? handleReject : handleLocalReject}
                 disabled={processingId === pr.id || submittingReview}
               >
                 <XCircle className="mr-2 h-4 w-4" />
