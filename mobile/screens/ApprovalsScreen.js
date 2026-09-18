@@ -8,6 +8,9 @@ import { useSocket } from '../context/SocketContext';
 export default function ApprovalsScreen() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [filter, setFilter] = useState('pending'); // 'pending' or 'reviewed'
   const navigation = useNavigation();
@@ -16,14 +19,18 @@ export default function ApprovalsScreen() {
 
   useEffect(() => {
     if (isFocused) {
-      fetchUserAndRequests();
+      setPage(1);
+      setHasMore(true);
+      fetchUserAndRequests(1, true);
     }
   }, [isFocused, filter]);
 
   useEffect(() => {
     if (socket) {
       const handleUpdate = () => {
-        fetchUserAndRequests();
+        setPage(1);
+        setHasMore(true);
+        fetchUserAndRequests(1, true);
       };
 
       socket.on('pr_updated', handleUpdate);
@@ -36,8 +43,13 @@ export default function ApprovalsScreen() {
     }
   }, [socket, filter]);
 
-  const fetchUserAndRequests = async () => {
-    setLoading(true);
+  const fetchUserAndRequests = async (pageNum = page, reset = false) => {
+    if (reset) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+    
     try {
       const userStr = await SecureStore.getItemAsync('user');
       let role = null;
@@ -47,14 +59,31 @@ export default function ApprovalsScreen() {
         setUserRole(role);
       }
       
-      const response = await api.get(`/purchase-requests?my_reviews=${filter}`); 
-      const allPrs = response.data.purchaseRequests || [];
+      const response = await api.get(`/purchase-requests?my_reviews=${filter}&pageSize=10&page=${pageNum}`); 
+      const newPrs = response.data.purchaseRequests || [];
       
-      setRequests(allPrs);
+      if (reset) {
+        setRequests(newPrs);
+      } else {
+        setRequests(prev => [...prev, ...newPrs]);
+      }
+      
+      if (newPrs.length < 10) {
+        setHasMore(false);
+      }
     } catch (error) {
-      console.error('Error fetching pending approvals:', error);
+      console.error('Error fetching approvals:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMoreApprovals = () => {
+    if (!loadingMore && hasMore && !loading) {
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchUserAndRequests(nextPage, false);
     }
   };
 
@@ -124,6 +153,15 @@ export default function ApprovalsScreen() {
         windowSize={5}
         removeClippedSubviews={true}
         ListEmptyComponent={<Text style={styles.emptyText}>{filter === 'pending' ? 'No pending approvals right now!' : 'No reviewed requests yet.'}</Text>}
+        onEndReached={loadMoreApprovals}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#FFBF00" />
+            </View>
+          ) : null
+        }
       />
     </View>
   );

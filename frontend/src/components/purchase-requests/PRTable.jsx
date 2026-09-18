@@ -4,7 +4,7 @@ import Button from '../ui/Button';
 import { Eye, CheckCircle, XCircle, Edit, Trash2, Shield, X, AlertTriangle, AlertCircle, ChevronUp, ChevronDown, Settings, FileSpreadsheet } from 'lucide-react';
 import StatusBadge from '../ui/StatusBadge';
 import { formatCurrency, formatDate, formatPaymentTerms } from '../../utils/formatters';
-import purchaseRequestService from '../../services/purchaseRequestService';
+import { purchaseRequestService } from "../../services/purchaseRequests";
 
 export const PRTable = ({
   purchaseRequests, user, expandedId, setExpandedId,

@@ -7,6 +7,7 @@ const ProcessItemRequestModal = ({ isOpen, onClose, pr, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
   const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [customSupplier, setCustomSupplier] = useState('');
   const [paymentBasis, setPaymentBasis] = useState('non_debt');
   const [paymentTermsNote, setPaymentTermsNote] = useState('');
   const [items, setItems] = useState([]);
@@ -24,6 +25,7 @@ const ProcessItemRequestModal = ({ isOpen, onClose, pr, onSuccess }) => {
         unit_price: item.unit_price || 0
       })) : []);
       setSelectedSupplier(pr.supplier_id || '');
+      setCustomSupplier('');
       setPaymentBasis(pr.payment_basis || 'non_debt');
       setPaymentTermsNote(pr.payment_terms_note || '');
       
@@ -83,40 +85,85 @@ const ProcessItemRequestModal = ({ isOpen, onClose, pr, onSuccess }) => {
       return;
     }
     
+    if (selectedSupplier === 'other' && !customSupplier.trim()) {
+      alert('Please enter the name of the new supplier');
+      return;
+    }
+    
     // Validate unit prices
     if (items.some(item => !item.unit_price || parseFloat(item.unit_price) <= 0)) {
       alert('Please provide valid unit prices for all items');
       return;
     }
 
-    // Prepare data
-    const prData = {
-      supplier_id: selectedSupplier,
-      payment_basis: paymentBasis,
-      payment_terms_note: paymentTermsNote,
-      items: items.map(i => ({
-        id: i.id, // item id in pr_items table
-        item_id: i.item_id,
-        quantity: i.quantity,
-        unit_price: i.unit_price
-      }))
-    };
-
-    if (paymentBasis === 'debt') {
-      const cleaned = paymentSchedules.filter(s => s.payment_date || s.amount || s.note).map(s => ({
-        payment_date: s.payment_date,
-        amount: s.amount ? parseFloat(s.amount) : null,
-        note: s.note
-      }));
-      if (cleaned.length === 0) {
-        alert('Please add at least one payment schedule for debt purchases');
-        return;
-      }
-      prData.payment_schedules = cleaned;
-    }
-
     try {
       setLoading(true);
+
+
+
+      // Prepare data
+      if (items.length === 0) {
+        alert('At least one item is required');
+        setLoading(false);
+        return;
+      }
+
+      if (items.some(item => parseFloat(item.unit_price || 0) <= 0)) {
+        alert('All items must have a unit price strictly greater than 0');
+        setLoading(false);
+        return;
+      }
+
+      if (selectedSupplier === 'other' && !customSupplier.trim()) {
+        alert('Please enter a valid name for the custom supplier');
+        setLoading(false);
+        return;
+      }
+
+      const prData = {
+        supplier_id: selectedSupplier === 'other' ? 'other' : selectedSupplier,
+        supplier_name: selectedSupplier === 'other' ? customSupplier.trim() : null,
+        payment_basis: paymentBasis,
+        payment_terms_note: paymentTermsNote,
+        items: items.map(i => ({
+          id: i.id, // item id in pr_items table
+          item_id: i.item_id,
+          quantity: i.quantity,
+          unit_price: i.unit_price
+        }))
+      };
+
+      if (paymentBasis === 'debt') {
+        const cleaned = paymentSchedules.filter(s => s.payment_date || s.amount || s.note).map(s => ({
+          payment_date: s.payment_date,
+          amount: s.amount ? parseFloat(s.amount) : null,
+          note: s.note
+        }));
+        
+        if (cleaned.length === 0) {
+          alert('Please add at least one payment schedule for debt purchases');
+          setLoading(false);
+          return;
+        }
+
+        if (cleaned.some(s => !s.payment_date || !s.amount)) {
+          alert('Please provide both date and amount for all payment schedules');
+          setLoading(false);
+          return;
+        }
+
+        const sum = cleaned.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+        const total = items.reduce((acc, curr) => acc + (parseFloat(curr.unit_price) || 0) * (parseInt(curr.quantity) || 0), 0);
+
+        if (Math.abs(sum - total) > 0.01) {
+          alert(`Payment schedules sum (${formatCurrency(sum)}) must exactly equal the total amount (${formatCurrency(total)})`);
+          setLoading(false);
+          return;
+        }
+
+        prData.payment_schedules = cleaned;
+      }
+
       await purchaseRequestService.process(pr.id, prData);
       onSuccess();
     } catch (err) {
@@ -161,7 +208,21 @@ const ProcessItemRequestModal = ({ isOpen, onClose, pr, onSuccess }) => {
                     {suppliers.map(s => (
                       <option key={s.id} value={s.id}>{s.supplier_name}</option>
                     ))}
+                    <option value="other">Other...</option>
                   </select>
+                  {selectedSupplier === 'other' && (
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">New Supplier Name *</label>
+                      <input
+                        type="text"
+                        value={customSupplier}
+                        onChange={(e) => setCustomSupplier(e.target.value)}
+                        placeholder="Enter supplier name"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -190,7 +251,7 @@ const ProcessItemRequestModal = ({ isOpen, onClose, pr, onSuccess }) => {
                         <td className="px-3 py-2 text-sm text-gray-900 text-right">
                           <input
                             type="number"
-                            min="0"
+                            min="0.01"
                             step="0.01"
                             value={item.unit_price}
                             onChange={(e) => handleUpdateItem(index, 'unit_price', e.target.value)}

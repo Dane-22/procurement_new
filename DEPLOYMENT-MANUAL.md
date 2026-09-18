@@ -92,15 +92,24 @@ If you added new native dependencies or need a fresh binary (.apk, .aab, .ipa):
 ```bash
 cd /var/www/Procurement/mobile
 
-# Build Android APK for direct install/testing
+# Build Android APK for direct install/testing (Android ONLY)
 eas build -p android --profile preview
 
 # Build Android App Bundle (AAB) for Google Play
 eas build -p android --profile production
 
-# Build iOS for App Store
+# Build iOS for App Store (Requires paid Apple Developer Account)
 eas build -p ios --profile production
 ```
+
+> **Testing on iOS (No Developer Account Required):**
+> You cannot scan an Android APK QR code with an iPhone, and Apple blocks standalone iOS builds without a paid Developer Account. 
+> To test on an iPhone, do **not** use `eas build`. Instead, run a live local server on your computer:
+> ```bash
+> cd mobile
+> npx expo start --tunnel
+> ```
+> Scan the QR code that appears with the iPhone's camera, and it will open the app seamlessly in Expo Go.
 
 ### Troubleshooting API / Login Issues
 If the mobile app fails to log in or throws an error, you can view the live API logs on the production server to see exactly what is failing in the backend. Run this command on the server to tail the logs:

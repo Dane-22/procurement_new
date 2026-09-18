@@ -213,6 +213,55 @@ router.get('/check-supplier-accreditation/:supplierName', authenticate, async (r
   }
 });
 
+// Get PR counts grouped by status (filtered by user role)
+router.get('/counts', authenticate, async (req, res) => {
+  try {
+    const { view } = req.query;
+    
+    let baseFrom = `
+      FROM purchase_requests pr
+      JOIN employees e ON pr.requested_by = e.id
+      LEFT JOIN suppliers s ON pr.supplier_id = s.id
+    `;
+
+    const whereClauses = [];
+    const whereParams = [];
+
+    // Engineers see only their own PRs by default, but can view all with ?view=all
+    if (req.user.role === 'engineer' && view !== 'all') {
+      whereClauses.push('pr.requested_by = ?');
+      whereParams.push(req.user.id);
+    }
+
+    const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const countQuery = `
+      SELECT pr.status, COUNT(*) as count
+      ${baseFrom}
+      ${whereSql}
+      GROUP BY pr.status
+    `;
+
+    const [rows] = await db.query(countQuery, whereParams);
+    
+    // Also get the total count of all PRs
+    const totalCountQuery = `
+      SELECT COUNT(*) as total
+      ${baseFrom}
+      ${whereSql}
+    `;
+    const [totalRows] = await db.query(totalCountQuery, whereParams);
+
+    res.json({
+      counts: rows,
+      total: totalRows?.[0]?.total ?? 0
+    });
+  } catch (error) {
+    console.error('Fetch purchase request counts error:', error);
+    res.status(500).json({ message: 'Failed to fetch purchase request counts: ' + error.message });
+  }
+});
+
 // Get all PRs (filtered by user role)
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -1765,6 +1814,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
         return !Number.isFinite(up) || up <= 0;
       });
       if (invalidItems.length > 0) {
+        console.error('Process PR 400: All items must have a unit price strictly greater than 0', { invalidItems });
         return res.status(400).json({ message: 'All items must have a unit price strictly greater than 0' });
       }
 
@@ -1779,6 +1829,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
 
       const pr = prs[0];
       if (pr.status !== 'For Admin Processing') {
+        console.error('Process PR 400: This PR is not in For Admin Processing status.', { status: pr.status });
         await conn.rollback();
         return res.status(400).json({ message: 'This PR is not in For Admin Processing status.' });
       }
@@ -1790,7 +1841,18 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
       let matchedSupplierId = supplier_id || null;
       let freeTextSupplierName = normalizeSupplierName(supplier_name);
       
-      if (matchedSupplierId) {
+      if (matchedSupplierId === 'other') {
+        if (!freeTextSupplierName) {
+          console.error('Process PR 400: Supplier name is required for new supplier.');
+          await conn.rollback();
+          return res.status(400).json({ message: 'Supplier name is required for new supplier.' });
+        }
+        const [result] = await conn.query(
+          'INSERT INTO suppliers (supplier_code, supplier_name) VALUES (?, ?)',
+          [`SUP-${Date.now()}`, freeTextSupplierName]
+        );
+        matchedSupplierId = result.insertId;
+      } else if (matchedSupplierId) {
         const [supRows] = await conn.query('SELECT id, supplier_name, address FROM suppliers WHERE id = ? LIMIT 1', [matchedSupplierId]);
         if (supRows.length > 0) {
           freeTextSupplierName = supRows[0].supplier_name;
@@ -1801,6 +1863,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
       }
 
       if (!freeTextSupplierName) {
+        console.error('Process PR 400: A valid supplier is required to process the item request.', { matchedSupplierId });
         await conn.rollback();
         return res.status(400).json({ message: 'A valid supplier is required to process the item request.' });
       }
@@ -1850,10 +1913,20 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
         
         let sumSchedules = 0;
         const scheduleValues = [];
+        let hasInvalidSchedule = false;
+        
         schedules.forEach(sched => {
+          if (!sched.payment_date || !sched.amount) {
+            hasInvalidSchedule = true;
+          }
           sumSchedules += sched.amount;
-          scheduleValues.push([req.params.id, sched.paymentDate, sched.amount, sched.note]);
+          scheduleValues.push([req.params.id, sched.payment_date, sched.amount, sched.note]);
         });
+        
+        if (hasInvalidSchedule) {
+          await conn.rollback();
+          return res.status(400).json({ message: 'All payment schedules must have a valid date and amount.' });
+        }
         
         if (Math.abs(sumSchedules - totalAmount) > 0.01) {
           await conn.rollback();

@@ -12,7 +12,6 @@ export default function CreateRequestScreen({ route, navigation }) {
 
   const [purpose, setPurpose] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [totalAmount, setTotalAmount] = useState('');
   const [project, setProject] = useState('');
   const [dateNeeded, setDateNeeded] = useState(new Date().toISOString().split('T')[0]);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -226,18 +225,20 @@ export default function CreateRequestScreen({ route, navigation }) {
       return;
     }
 
+    const calculatedTotal = items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)), 0);
+
     const payload = {
       purpose,
       remarks,
       project,
       date_needed: dateNeeded,
       payment_basis: paymentBasis,
-      total_amount: parseFloat(totalAmount) || 0,
+      total_amount: calculatedTotal,
       is_item_request: true,
       items: items.map(i => ({
         item_id: i.item_id,
         quantity: parseFloat(i.quantity),
-        unit_price: 0
+        unit_price: parseFloat(i.unit_price) || 0
       }))
     };
 
@@ -454,6 +455,20 @@ export default function CreateRequestScreen({ route, navigation }) {
                     <MaterialIcons name="add" size={16} color="#d97706" />
                   </TouchableOpacity>
                 </View>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
+                  <Text style={styles.qtyLabel}>Price (₱):</Text>
+                  <TextInput
+                    style={[styles.qtyInput, { width: 80, marginHorizontal: 0 }]}
+                    value={String(item.unit_price || '')}
+                    onChangeText={(v) => updateItem(index, 'unit_price', v)}
+                    keyboardType="numeric"
+                    placeholder="0.00"
+                  />
+                  <Text style={{ fontSize: 13, color: '#64748b', marginLeft: 12, fontWeight: '600' }}>
+                    Total: ₱{((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)).toFixed(2)}
+                  </Text>
+                </View>
               </View>
               <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}>
                 <MaterialIcons name="delete-outline" size={24} color="#ef4444" />
@@ -465,14 +480,9 @@ export default function CreateRequestScreen({ route, navigation }) {
         {items.length > 0 && (
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total Amount (₱):</Text>
-            <TextInput
-              style={styles.totalInput}
-              value={totalAmount}
-              onChangeText={setTotalAmount}
-              keyboardType="numeric"
-              placeholder="0.00"
-              placeholderTextColor="#94a3b8"
-            />
+            <Text style={[styles.totalInput, { fontSize: 24 }]}>
+              {items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0)), 0).toFixed(2)}
+            </Text>
           </View>
         )}
 

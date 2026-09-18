@@ -31,7 +31,7 @@ const STATUS_MAPPING = {
 
 export default function PRManagementScreen({ navigation }) {
   const [requests, setRequests] = useState([]);
-  const [allRequests, setAllRequests] = useState([]);
+  const [counts, setCounts] = useState({ total: 0, statusCounts: {} });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
@@ -46,12 +46,30 @@ export default function PRManagementScreen({ navigation }) {
   }, [statusFilter]);
 
   useEffect(() => {
+    fetchCounts();
+  }, []);
+
+  const fetchCounts = async () => {
+    try {
+      const response = await api.get('/purchase-requests/counts');
+      const statusCounts = {};
+      response.data.counts.forEach(c => {
+        statusCounts[c.status] = c.count;
+      });
+      setCounts({ total: response.data.total, statusCounts });
+    } catch (error) {
+      console.error('Error fetching PR counts:', error);
+    }
+  };
+
+  useEffect(() => {
     if (socket) {
       const handleUpdate = () => {
         // Reset to page 1 and refetch
         setPage(1);
         setHasMore(true);
         fetchRequests(1, true);
+        fetchCounts();
       };
 
       socket.on('pr_updated', handleUpdate);
@@ -72,7 +90,7 @@ export default function PRManagementScreen({ navigation }) {
     }
 
     try {
-      let url = `/purchase-requests?limit=10&page=${pageNum}`;
+      let url = `/purchase-requests?pageSize=10&page=${pageNum}`;
       if (statusFilter) {
         const mappedStatuses = STATUS_MAPPING[statusFilter] || [statusFilter];
         url += `&status=${mappedStatuses.join(',')}`;
@@ -83,11 +101,6 @@ export default function PRManagementScreen({ navigation }) {
       
       if (reset) {
         setRequests(fetchedRequests);
-        if (!statusFilter) {
-          // Note: if paginated, this might only be the first 10. 
-          // You might need a separate endpoint for counts. 
-          setAllRequests(fetchedRequests);
-        }
       } else {
         setRequests(prev => [...prev, ...fetchedRequests]);
       }
@@ -112,9 +125,9 @@ export default function PRManagementScreen({ navigation }) {
   };
 
   const getStatusCount = (statusTab) => {
-    if (!statusTab) return allRequests.length;
+    if (!statusTab) return counts.total;
     const mappedStatuses = STATUS_MAPPING[statusTab] || [statusTab];
-    return allRequests.filter(r => mappedStatuses.includes(r.status)).length;
+    return mappedStatuses.reduce((sum, s) => sum + (counts.statusCounts[s] || 0), 0);
   };
 
   const getStatusStyle = (status) => {
