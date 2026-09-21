@@ -210,6 +210,7 @@ const Employees = () => {
 
   useEffect(() => {
     fetchEmployees(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredEmployees = useMemo(() => {
@@ -538,7 +539,7 @@ const Employees = () => {
 
             <div className="flex flex-col gap-3 border-t border-gray-200 px-5 py-4 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                Page {page} of {totalPages} • {total} total employees
+                Page {page} of {totalPages} â€¢ {total} total employees
               </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={previousPage} disabled={page <= 1}>

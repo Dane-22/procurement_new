@@ -107,6 +107,7 @@ const formatCurrency = (amount) => {
   }).format(amount || 0)
 }
 
+// eslint-disable-next-line no-unused-vars
 const formatDate = (dateString) => {
   if (!dateString) return '-'
   const date = new Date(dateString)
@@ -114,6 +115,7 @@ const formatDate = (dateString) => {
   return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`
 }
 
+// eslint-disable-next-line no-unused-vars
 const formatScheduleAmount = (amount) => {
   if (amount == null || amount === '') return '-'
   return formatCurrency(Number(amount) || 0)
@@ -163,8 +165,8 @@ const Items = () => {
   
   // PR Modal state
   const [showPRModal, setShowPRModal] = useState(false)
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
-  const [previewDraftPR, setPreviewDraftPR] = useState(null)
+  const [, setShowPreviewModal] = useState(false)
+  const [, setPreviewDraftPR] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   
   // PR Form state
@@ -189,7 +191,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
   const [editItemForm, setEditItemForm] = useState(DEFAULT_ITEM_FORM)
   const [editingItem, setEditingItem] = useState(null)
   const [addingItem, setAddingItem] = useState(false)
-  const [loadingNextSku, setLoadingNextSku] = useState(false)
+  const [, setLoadingNextSku] = useState(false)
   const [generatingSkuFromName, setGeneratingSkuFromName] = useState(false)
   const [updatingItem, setUpdatingItem] = useState(false)
   const [categoryForm, setCategoryForm] = useState({
@@ -860,7 +862,7 @@ setPaymentBasis('debt')
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-900 break-words">{item.item_name}</p>
-                    <p className="mt-1 text-xs text-gray-500 break-words">ITEM CODE: {item.item_code} • {item.unit}</p>
+                    <p className="mt-1 text-xs text-gray-500 break-words">ITEM CODE: {item.item_code} â€¢ {item.unit}</p>
                   </div>
                   <button
                     onClick={() => removeFromCart(item.item_id)}
@@ -1037,7 +1039,7 @@ setPaymentBasis('debt')
                               {item.item_name}
                             </p>
                             <p className="mt-1 text-xs text-gray-500 break-words">
-                              ITEM CODE: {item.item_code} • {item.unit || 'pcs'}
+                              ITEM CODE: {item.item_code} â€¢ {item.unit || 'pcs'}
                             </p>
                           </div>
                           {canManageCatalog && (
@@ -1347,14 +1349,14 @@ setPaymentBasis('debt')
     {supplierAccreditationStatus && supplierAccreditationStatus.found && !supplierAccreditationStatus.accredited && (
       <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-md">
         <p className="text-sm text-orange-800">
-          ⚠️ Supplier is not accredited. This PR will be flagged for accreditation review.
+          âš ï¸ Supplier is not accredited. This PR will be flagged for accreditation review.
         </p>
       </div>
     )}
     {supplierAccreditationStatus && supplierAccreditationStatus.found && supplierAccreditationStatus.accredited && (
       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
         <p className="text-sm text-green-800">
-          ✅ Supplier is accredited.
+          âœ… Supplier is accredited.
         </p>
       </div>
     )}

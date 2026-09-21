@@ -79,6 +79,7 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, disabled 
   );
 };
 
+// eslint-disable-next-line no-unused-vars
 const DVPreviewModal = ({ dv, loading, onClose, onApprove, onHold, processingId }) => {
   if (!dv) return null;
 
