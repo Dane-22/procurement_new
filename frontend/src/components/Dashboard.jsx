@@ -15,6 +15,7 @@ const Card = ({ children, className = '' }) => (
   </div>
 )
 
+// eslint-disable-next-line no-unused-vars
 const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
   <Card className="p-4">
     <div className="flex items-start justify-between">
@@ -90,6 +91,7 @@ const Dashboard = () => {
       socketService.off('pr_status_changed', fetchDashboardData)
       socketService.off('pr_created', fetchDashboardData)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
 
@@ -105,10 +107,12 @@ const Dashboard = () => {
 
     media.addListener(update)
     return () => media.removeListener(update)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     fetchPricingTrends()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItem, selectedYear])
 
   const fetchDashboardData = async () => {
@@ -423,7 +427,7 @@ const Dashboard = () => {
                   tick={{ fontSize: 11 }}
                   stroke="#9ca3af"
                   axisLine={false}
-                  tickFormatter={(value) => `â‚±${value >= 1000 ? (value/1000) + 'k' : value}`}
+                  tickFormatter={(value) => `Ã¢â€šÂ±${value >= 1000 ? (value/1000) + 'k' : value}`}
                 />
                 <Tooltip 
                   formatter={(value) => [formatCurrency(value), 'Total Spend']}
@@ -509,10 +513,10 @@ const Dashboard = () => {
                   width={isMobile ? 40 : 60}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   stroke="#9ca3af"
-                  tickFormatter={(value) => `â‚±${value}`}
+                  tickFormatter={(value) => `Ã¢â€šÂ±${value}`}
                 />
                 <Tooltip 
-                  formatter={(value, name) => [`â‚±${parseFloat(value).toFixed(2)}`, name]}
+                  formatter={(value, name) => [`Ã¢â€šÂ±${parseFloat(value).toFixed(2)}`, name]}
                   labelStyle={{ color: '#374151' }}
                   contentStyle={{ 
                     backgroundColor: '#fff', 

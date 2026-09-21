@@ -130,7 +130,7 @@ const PaymentRequests = () => {
   const [expandedId, setExpandedId] = useState(null)
   
   // Preview modal state
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [, setShowPreviewModal] = useState(false)
   const [previewPR, setPreviewPR] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   
@@ -539,7 +539,7 @@ const PaymentRequests = () => {
                               <p className="text-xs text-gray-500 uppercase">Payment Schedules</p>
                               <p className="text-sm text-gray-900">
                                 {pr.payment_schedule_count || 0}
-                                {pr.next_payment_date ? ` • next ${formatDate(pr.next_payment_date)}` : ''}
+                                {pr.next_payment_date ? ` â€¢ next ${formatDate(pr.next_payment_date)}` : ''}
                               </p>
                             </div>
                           </div>
@@ -620,7 +620,7 @@ const PaymentRequests = () => {
                     {pr.payee_address && <p className="text-xs text-gray-500">Address: {pr.payee_address}</p>}
                     <p className="text-xs text-gray-500">
                       Payment schedules: {pr.payment_schedule_count || 0}
-                      {pr.next_payment_date ? ` • next ${formatDate(pr.next_payment_date)}` : ''}
+                      {pr.next_payment_date ? ` â€¢ next ${formatDate(pr.next_payment_date)}` : ''}
                     </p>
                     {pr.remarks && <p className="text-xs text-gray-500">Remarks: {pr.remarks}</p>}
                   </div>
@@ -797,7 +797,7 @@ const PaymentRequests = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{pr.pr_number} - {pr.project}</div>
-                            <div className="text-xs text-gray-500">{pr.payee_name} • {formatCurrency(pr.total_amount || pr.amount)}</div>
+                            <div className="text-xs text-gray-500">{pr.payee_name} â€¢ {formatCurrency(pr.total_amount || pr.amount)}</div>
                           </div>
                         ))}
                       </div>
@@ -860,7 +860,7 @@ const PaymentRequests = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{sr.sr_number} - {sr.purpose || sr.project}</div>
-                            <div className="text-xs text-gray-500">{sr.supplier_name || 'No supplier'} • {formatCurrency(sr.amount)}</div>
+                            <div className="text-xs text-gray-500">{sr.supplier_name || 'No supplier'} â€¢ {formatCurrency(sr.amount)}</div>
                           </div>
                         ))}
                       </div>
@@ -923,7 +923,7 @@ const PaymentRequests = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{cr.cr_number} - {cr.purpose || cr.project}</div>
-                            <div className="text-xs text-gray-500">{cr.supplier_name || 'No supplier'} • {formatCurrency(cr.amount)}</div>
+                            <div className="text-xs text-gray-500">{cr.supplier_name || 'No supplier'} â€¢ {formatCurrency(cr.amount)}</div>
                           </div>
                         ))}
                       </div>

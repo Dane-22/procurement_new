@@ -88,13 +88,7 @@ const formatCurrency = (amount) => {
   }).format(amount || 0)
 }
 
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  return new Date(dateString).toLocaleDateString('en-PH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+)
 }
 
 const StatusBadge = ({ status }) => {
@@ -685,7 +679,7 @@ const PaymentOrders = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{sr.sr_number} - {sr.purpose || sr.project}</div>
-                            <div className="text-xs text-gray-500">{sr.supplier_name || 'No supplier'} • {formatCurrency(sr.amount)}</div>
+                            <div className="text-xs text-gray-500">{sr.supplier_name || 'No supplier'} â€¢ {formatCurrency(sr.amount)}</div>
                           </div>
                         ))}
                       </div>
@@ -748,7 +742,7 @@ const PaymentOrders = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{cr.cr_number} - {cr.purpose || cr.project}</div>
-                            <div className="text-xs text-gray-500">{cr.supplier_name || 'No supplier'} • {formatCurrency(cr.amount)}</div>
+                            <div className="text-xs text-gray-500">{cr.supplier_name || 'No supplier'} â€¢ {formatCurrency(cr.amount)}</div>
                           </div>
                         ))}
                       </div>
@@ -811,7 +805,7 @@ const PaymentOrders = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{r.rmb_number} - {r.purpose || r.project}</div>
-                            <div className="text-xs text-gray-500">{r.employee_name || 'No employee'} • {formatCurrency(r.total_amount)}</div>
+                            <div className="text-xs text-gray-500">{r.employee_name || 'No employee'} â€¢ {formatCurrency(r.total_amount)}</div>
                           </div>
                         ))}
                       </div>

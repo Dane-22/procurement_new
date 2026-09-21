@@ -165,7 +165,7 @@ const Approvals = () => {
   const [paymentOrderSubTab, setPaymentOrderSubTab] = useState('pending');
   const [reimbursements, setReimbursements] = useState([]);
   const [rmbSubTab, setRmbSubTab] = useState('pending');
-  const [isMobile, setIsMobile] = useState(false);
+  ;
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [paymentOrders, setPaymentOrders] = useState([]);
   const [purchaseRequests, setPurchaseRequests] = useState([]);
@@ -855,13 +855,7 @@ const Approvals = () => {
     }
   };
 
-  const handleDeleteReimbursement = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently delete this request? This action cannot be undone and will be logged.')) return;
-    try {
-      setProcessingId(id);
-      await reimbursementService.delete(id);
-      await fetchData();
-    } catch (error) {
+   catch (error) {
       console.error('Error deleting Reimbursement:', error);
       alert(error.response?.data?.message || 'Failed to delete request');
     } finally {
