@@ -32,6 +32,16 @@ export const SocketProvider = ({ children }) => {
 
           newSocket.on('connect', () => {
             console.log('Socket connected:', newSocket.id);
+            if (user) {
+              if (user.id) {
+                newSocket.emit('join', user.id);
+                console.log(`[Socket] Joined user room: ${user.id}`);
+              }
+              if (user.role) {
+                newSocket.emit('join_role', user.role);
+                console.log(`[Socket] Joined role room: ${user.role}`);
+              }
+            }
           });
 
           newSocket.on('connect_error', (err) => {

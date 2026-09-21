@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
 import { useSocket } from '../context/SocketContext';
+import NotificationBell from '../components/NotificationBell';
 
 export default function DashboardScreen({ navigation }) {
   const [stats, setStats] = useState(null);
@@ -166,8 +167,15 @@ export default function DashboardScreen({ navigation }) {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <View style={styles.headerGradient}>
-        <Text style={styles.welcomeText}>Hello, {user?.firstname || 'User'}</Text>
-        <Text style={styles.roleText}>{role}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View>
+            <Text style={styles.welcomeText}>Hello, {user?.firstname || 'User'}</Text>
+            <Text style={styles.roleText}>{role}</Text>
+          </View>
+          <View style={{ marginRight: 56, marginTop: 5 }}>
+            <NotificationBell color="#1E293B" />
+          </View>
+        </View>
       </View>
       
       <View style={styles.content}>

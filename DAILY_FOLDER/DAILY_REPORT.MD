@@ -210,6 +210,8 @@ This report outlines the current status of the Procurement System project, inclu
 - **Purchase Request Creation (Item Cost Calculation):** We updated the Purchase Request creation flow in the mobile app so that users can input individual Unit Prices for each requested item. The app now automatically calculates and displays the total amount dynamically on the requested item cards.
 - **Mobile Rate Limiting & Pagination:** To prevent the mobile app from lagging when dealing with thousands of historical records, we implemented robust pagination (rate limiting) on both the "All Requests" and "Approvals" screens. The app now only fetches 10 items at a time and automatically loads more as you scroll down (infinite scrolling). We also built a new lightning-fast `/counts` backend route to accurately calculate and display the total numbers on the UI tabs (e.g., `ALL (12)`) without needing to download all the data.
 - **Inline Quick Actions & Offline Approvals:** We added inline "Approve" and "Reject" buttons directly to the pending approvals list. We also integrated rate limiters (loading states) to prevent accidental double-clicks and connected these actions to the offline synchronization engine so approvals queue safely if the internet disconnects.
+- **Mobile Alert Sounds (expo-audio) & User-Specific Notifications:** Successfully integrated alert sounds for new notifications. Migrated the legacy `expo-av` dependency to the modern `expo-audio` package to ensure full compatibility with the latest Expo Go client. To resolve an unexpected Metro bundler caching crash, we migrated the audio asset to a natively supported `.mp3` format. Additionally, finalized the in-app UI component for the notification dropdown and standardized its position across all custom headers and native tabs with a unified 80px right-margin to consistently prevent overlap with the Expo Go developer menu. The mobile socket connection was refactored to explicitly join `user_{ID}` and `role_{ROLE}` rooms on authentication, guaranteeing that real-time notifications are securely isolated to their intended recipients.
+- **Push Notification Fixes:** Fixed a routing bug where tapping a notification on mobile would result in a 404 error rather than opening the PR preview. Additionally, updated the notification text to dynamically include the full name of the PR creator.
 
 ### Web Application (Main Computer System)
 - **Enhanced System Audit Logs:** The web application now features a completely revamped Audit Log interface for Super Admins. It includes dynamic backend-driven filters with a premium Tailwind UI aesthetic, a responsive filter grid with integrated date-range pickers, advanced search, a detailed viewer modal for inspecting payload changes, and a robust "Export to CSV" functionality for compliance reporting.
@@ -240,7 +242,12 @@ This report outlines the current status of the Procurement System project, inclu
 
 ---
 
-## 2. Pending Tasks (Next Steps) ⏳
+## 2. Ongoing Tasks 🔄
+- **Push Notifications (Web & Mobile):** Rewrote the backend delivery engine to dispatch real-time Push Notifications simultaneously to Mobile (via Expo Push) and Web Browsers (via Web-Push and VAPID keys). This ensures users are notified of important events even when their apps/browsers are closed.
+
+---
+
+## 3. Pending Tasks (Next Steps) ⏳
 - **Purchase Order (PO) Flow Refactoring:** Implement the advanced PO approval workflow based on the existing `PO_FLOW_IMPLEMENTATION_PLAN.md`. This includes adding the Admin review gate, partial per-line item receiving, and Super Admin final approval steps.
 - **Service Request (SR) Flow:** Implement the full lifecycle (Pending -> For Supplier Quote -> Admin Pricing -> Super Admin Final Approval -> Job Order) based on the system flowchart.
 - **Cash Request (CR) Flow:** Implement the Cash Request lifecycle, including standard (Department Head -> Super Admin) and expedited (< 3 days) approval paths, and Finance cash release.

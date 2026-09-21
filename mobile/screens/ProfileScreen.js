@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import { AuthContext } from '../context/AuthContext';
 import { useContext } from 'react';
+import NotificationBell from '../components/NotificationBell';
 
 export default function ProfileScreen({ navigation }) {
   const { setUser: setGlobalUser } = useContext(AuthContext) || {};
@@ -76,9 +77,14 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.headerGradient}>
         <View style={styles.headerActions}>
            <Text style={styles.headerTitle}>My Profile</Text>
-           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
-             <MaterialIcons name="close" size={24} color="#1E293B" />
-           </TouchableOpacity>
+           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+             <View style={{ marginRight: 15 }}>
+               <NotificationBell color="#1E293B" />
+             </View>
+             <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.iconButton, { marginRight: 56 }]}>
+               <MaterialIcons name="close" size={24} color="#1E293B" />
+             </TouchableOpacity>
+           </View>
         </View>
         
         <View style={styles.profileSection}>

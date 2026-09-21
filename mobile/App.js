@@ -20,7 +20,9 @@ import CreateSupplierScreen from './screens/CreateSupplierScreen';
 import { initDB, setupNetworkListener } from './services/offlineSync';
 import { AuthContext } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { NavigationTheme, colors } from './theme';
+import NotificationBell from './components/NotificationBell';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -63,6 +65,7 @@ function MainTabs() {
         headerStyle: { backgroundColor: colors.primary, elevation: 0, shadowOpacity: 0 },
         headerTintColor: colors.secondary,
         headerTitleStyle: { fontWeight: '800' },
+        headerRight: () => <View style={{ marginRight: 80 }}><NotificationBell /></View>,
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
@@ -93,52 +96,54 @@ export default function App() {
     <ErrorBoundary>
       <AuthContext.Provider value={{ user, setUser }}>
         <SocketProvider>
-          <NavigationContainer theme={NavigationTheme}>
-          {!user ? (
-            <Stack.Navigator screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="Landing" component={LandingScreen} />
-              <Stack.Screen name="Login">
-                {(props) => <LoginScreen {...props} onLoginSuccess={setUser} />}
-              </Stack.Screen>
-            </Stack.Navigator>
-          ) : (
-            <Stack.Navigator>
-              <Stack.Screen 
-                name="MainTabs" 
-                component={MainTabs} 
-                options={{ headerShown: false }} 
-              />
-              <Stack.Screen 
-                name="PRDetail" 
-                component={PRDetailScreen} 
-                options={{ title: 'Purchase Request Details' }}
-              />
-              <Stack.Screen 
-                name="PRReview" 
-                component={PRReviewScreen} 
-                options={{ title: 'Review Request' }}
-              />
-              <Stack.Screen 
-                name="ProcessPR" 
-                component={ProcessPRScreen} 
-                options={{ title: 'Process Request' }}
-              />
-              <Stack.Screen 
-                name="EditRequest" 
-                component={CreateRequestScreen} 
-                options={{ title: 'Edit Request' }}
-              />
-              <Stack.Screen 
-                name="CreateSupplier" 
-                component={CreateSupplierScreen} 
-                options={{ title: 'Add New Supplier' }}
-              />
-            </Stack.Navigator>
-          )}
-          <StatusBar style="auto" />
-        </NavigationContainer>
-      </SocketProvider>
-    </AuthContext.Provider>
+          <NotificationProvider>
+            <NavigationContainer theme={NavigationTheme}>
+            {!user ? (
+              <Stack.Navigator screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="Landing" component={LandingScreen} />
+                <Stack.Screen name="Login">
+                  {(props) => <LoginScreen {...props} onLoginSuccess={setUser} />}
+                </Stack.Screen>
+              </Stack.Navigator>
+            ) : (
+              <Stack.Navigator>
+                <Stack.Screen 
+                  name="MainTabs" 
+                  component={MainTabs} 
+                  options={{ headerShown: false }} 
+                />
+                <Stack.Screen 
+                  name="PRDetail" 
+                  component={PRDetailScreen} 
+                  options={{ title: 'Purchase Request Details' }}
+                />
+                <Stack.Screen 
+                  name="PRReview" 
+                  component={PRReviewScreen} 
+                  options={{ title: 'Review Request' }}
+                />
+                <Stack.Screen 
+                  name="ProcessPR" 
+                  component={ProcessPRScreen} 
+                  options={{ title: 'Process Request' }}
+                />
+                <Stack.Screen 
+                  name="EditRequest" 
+                  component={CreateRequestScreen} 
+                  options={{ title: 'Edit Request' }}
+                />
+                <Stack.Screen 
+                  name="CreateSupplier" 
+                  component={CreateSupplierScreen} 
+                  options={{ title: 'Add New Supplier' }}
+                />
+              </Stack.Navigator>
+            )}
+            <StatusBar style="auto" />
+          </NavigationContainer>
+          </NotificationProvider>
+        </SocketProvider>
+      </AuthContext.Provider>
     </ErrorBoundary>
   );
 }

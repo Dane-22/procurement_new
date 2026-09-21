@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import api, { BASE_URL } from '../services/api';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import NotificationBell from '../components/NotificationBell';
 
 export default function CreateRequestScreen({ route, navigation }) {
   const { editMode, requestData } = route.params || {};
@@ -321,8 +322,15 @@ export default function CreateRequestScreen({ route, navigation }) {
       >
         <Animated.ScrollView entering={FadeIn} style={styles.container} contentContainerStyle={{ paddingBottom: 120 }} bounces={false}>
           <View style={[styles.headerGradient, { backgroundColor: '#FFBF00' }]}>
-            <Text style={styles.title}>{editMode ? 'Edit Request' : 'New Request'}</Text>
-            <Text style={styles.subtitle}>{editMode ? 'Update your request details' : 'Submit items for procurement processing'}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View>
+                <Text style={styles.title}>{editMode ? 'Edit Request' : 'New Request'}</Text>
+                <Text style={styles.subtitle}>{editMode ? 'Update your request details' : 'Submit items for procurement processing'}</Text>
+              </View>
+              <View style={{ marginRight: 56, marginTop: 5 }}>
+                <NotificationBell color="#1E293B" />
+              </View>
+            </View>
           </View>
       
       <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.formSection}>

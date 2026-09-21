@@ -831,7 +831,7 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
         await createNotification(
           reviewerId,
           'New PR Created',
-          `Purchase Request ${prNumber} has been created and is ready for your review`,
+          `Purchase Request ${prNumber} has been created by ${req.user.first_name} ${req.user.last_name} and is ready for your review`,
           'PR Created',
           prId,
           'purchase_request'
@@ -1122,7 +1122,7 @@ router.put('/:id/submit-draft', authenticate, async (req, res) => {
       await createNotification(
         reviewerId,
         'New PR Created',
-        `Purchase Request ${pr.pr_number} has been created and is ready for your review`,
+        `Purchase Request ${pr.pr_number} has been created by ${req.user.first_name} ${req.user.last_name} and is ready for your review`,
         'PR Created',
         pr.id,
         'purchase_request'

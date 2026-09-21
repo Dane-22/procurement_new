@@ -23,6 +23,14 @@ function App() {
       socketService.on('notification', (data) => {
         console.log('Received notification:', data);
         setNotifications(prev => [data, ...prev]);
+        
+        // Play notification sound
+        try {
+          const audio = new Audio('/sounds/notification.ogg');
+          audio.play().catch(e => console.log('Audio autoplay prevented:', e));
+        } catch (err) {
+          console.error('Failed to play notification sound:', err);
+        }
       });
 
       // Register Push Notifications
