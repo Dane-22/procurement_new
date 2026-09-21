@@ -31,12 +31,10 @@ export default function DashboardScreen({ navigation }) {
         }
       };
 
-      socket.on('pr_updated', handleUpdate);
-      socket.on('new_pr', handleUpdate);
+      socket.on('pr_status_changed', handleUpdate);
 
       return () => {
-        socket.off('pr_updated', handleUpdate);
-        socket.off('new_pr', handleUpdate);
+        socket.off('pr_status_changed', handleUpdate);
       };
     }
   }, [socket, user]);

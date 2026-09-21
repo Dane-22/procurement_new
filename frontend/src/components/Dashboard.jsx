@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { socketService } from '../services/socket'
 import { purchaseRequestService } from '../services/purchaseRequests'
 import { purchaseOrderService } from '../services/purchaseOrders'
 import { serviceRequestService } from '../services/serviceRequests'
@@ -81,6 +82,14 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData()
     fetchPricingTrends()
+
+    socketService.on('pr_status_changed', fetchDashboardData)
+    socketService.on('pr_created', fetchDashboardData)
+
+    return () => {
+      socketService.off('pr_status_changed', fetchDashboardData)
+      socketService.off('pr_created', fetchDashboardData)
+    }
   }, [])
 
 
@@ -414,7 +423,7 @@ const Dashboard = () => {
                   tick={{ fontSize: 11 }}
                   stroke="#9ca3af"
                   axisLine={false}
-                  tickFormatter={(value) => `₱${value >= 1000 ? (value/1000) + 'k' : value}`}
+                  tickFormatter={(value) => `â‚±${value >= 1000 ? (value/1000) + 'k' : value}`}
                 />
                 <Tooltip 
                   formatter={(value) => [formatCurrency(value), 'Total Spend']}
@@ -500,10 +509,10 @@ const Dashboard = () => {
                   width={isMobile ? 40 : 60}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   stroke="#9ca3af"
-                  tickFormatter={(value) => `₱${value}`}
+                  tickFormatter={(value) => `â‚±${value}`}
                 />
                 <Tooltip 
-                  formatter={(value, name) => [`₱${parseFloat(value).toFixed(2)}`, name]}
+                  formatter={(value, name) => [`â‚±${parseFloat(value).toFixed(2)}`, name]}
                   labelStyle={{ color: '#374151' }}
                   contentStyle={{ 
                     backgroundColor: '#fff', 

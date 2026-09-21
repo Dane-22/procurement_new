@@ -1,10 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import * as Notifications from 'expo-notifications';
 import api from '../services/api';
 import { useSocket } from './SocketContext';
 import { AuthContext } from './AuthContext';
 
 const NotificationContext = createContext();
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
@@ -30,6 +39,19 @@ export function NotificationProvider({ children }) {
 
   useEffect(() => {
     fetchNotifications();
+
+    // Ensure audio plays even if the device is in silent mode
+    const configureAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+        });
+      } catch (e) {
+        console.warn('Could not configure audio mode', e);
+      }
+    };
+    configureAudio();
   }, [fetchNotifications]);
 
   // Socket listener
@@ -45,6 +67,19 @@ export function NotificationProvider({ children }) {
         } catch (err) {
           console.warn('Failed to play sound', err);
         }
+      }
+
+      // Show in-app banner/toast
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: payload?.title || 'New Notification',
+            body: payload?.message || 'You have a new update.',
+          },
+          trigger: null, // immediate
+        });
+      } catch (err) {
+        console.warn('Failed to show local notification', err);
       }
 
       // Re-fetch to get the newest list and count

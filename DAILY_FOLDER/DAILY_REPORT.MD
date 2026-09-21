@@ -243,6 +243,7 @@ This report outlines the current status of the Procurement System project, inclu
 ---
 
 ## 2. Ongoing Tasks 🔄
+- **Test Entire Purchase Request Flow:** Perform comprehensive end-to-end testing of the PR flow to ensure all roles and states transition correctly.
 - **Push Notifications (Web & Mobile):** Rewrote the backend delivery engine to dispatch real-time Push Notifications simultaneously to Mobile (via Expo Push) and Web Browsers (via Web-Push and VAPID keys). This ensures users are notified of important events even when their apps/browsers are closed.
 
 ---

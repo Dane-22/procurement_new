@@ -72,12 +72,10 @@ export default function PRManagementScreen({ navigation }) {
         fetchCounts();
       };
 
-      socket.on('pr_updated', handleUpdate);
-      socket.on('new_pr', handleUpdate);
+      socket.on('pr_status_changed', handleUpdate);
 
       return () => {
-        socket.off('pr_updated', handleUpdate);
-        socket.off('new_pr', handleUpdate);
+        socket.off('pr_status_changed', handleUpdate);
       };
     }
   }, [socket, statusFilter]);
@@ -169,7 +167,7 @@ export default function PRManagementScreen({ navigation }) {
           </View>
           <View style={styles.row}>
             <MaterialIcons name="payments" size={16} color="#4b5563" style={{ marginRight: 4 }} />
-            <Text style={styles.cardAmount}>₱{parseFloat(item.total_amount).toFixed(2)}</Text>
+            <Text style={styles.cardAmount}>â‚±{parseFloat(item.total_amount).toFixed(2)}</Text>
           </View>
         </View>
         

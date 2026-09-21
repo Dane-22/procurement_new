@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { socketService } from '../../services/socket'
 import { purchaseRequestService } from '../../services/purchaseRequests'
 import { ChevronUp, ChevronDown, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
@@ -87,6 +88,14 @@ const PendingPurchaseRequests = () => {
 
   useEffect(() => {
     fetchPurchaseRequests()
+
+    socketService.on('pr_status_changed', fetchPurchaseRequests)
+    socketService.on('pr_created', fetchPurchaseRequests)
+
+    return () => {
+      socketService.off('pr_status_changed', fetchPurchaseRequests)
+      socketService.off('pr_created', fetchPurchaseRequests)
+    }
   }, [])
 
   const fetchPurchaseRequests = async () => {

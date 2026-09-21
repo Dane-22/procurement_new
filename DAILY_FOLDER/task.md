@@ -2,6 +2,15 @@
 
 ## 1. Ongoing Tasks 🔄
 
+### Test Entire Purchase Request Flow
+- `[ ]` **End-to-End Testing:**
+  - `[ ]` Create PR as Engineer
+  - `[ ]` Review as Engineer
+  - `[ ]` Review as Admin
+  - `[ ]` Review as Super Admin Rep
+  - `[ ]` Review as Super Admin
+  - `[ ]` Receive Items
+
 ### Push Notifications (Web & Mobile)
 - `[x]` **Phase 1 Implementation:**
   - `[x]` Evaluate Web and Expo Push Notification registration.

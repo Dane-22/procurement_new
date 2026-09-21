@@ -42,12 +42,10 @@ export default function ApprovalsScreen() {
         fetchUserAndRequests(1, true);
       };
 
-      socket.on('pr_updated', handleUpdate);
-      socket.on('new_pr', handleUpdate);
+      socket.on('pr_status_changed', handleUpdate);
 
       return () => {
-        socket.off('pr_updated', handleUpdate);
-        socket.off('new_pr', handleUpdate);
+        socket.off('pr_status_changed', handleUpdate);
       };
     }
   }, [socket, filter]);
@@ -217,7 +215,7 @@ export default function ApprovalsScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{item.pr_number || `Request #${item.id}`}</Text>
-          <Text style={styles.cardAmount}>₱{parseFloat(item.total_amount || 0).toFixed(2)}</Text>
+          <Text style={styles.cardAmount}>â‚±{parseFloat(item.total_amount || 0).toFixed(2)}</Text>
         </View>
         <Text style={styles.requesterText}>Requester: {requesterName}</Text>
         <Text style={styles.cardDescription}>{item.purpose || 'No description provided'}</Text>
