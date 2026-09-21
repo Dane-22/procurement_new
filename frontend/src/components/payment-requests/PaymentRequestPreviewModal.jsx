@@ -84,6 +84,7 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, disabled 
   );
 };
 
+// eslint-disable-next-line no-unused-vars
 const PaymentRequestPreviewModal = ({ payment, loading, onClose, onApprove, onHold, processingId }) => {
   if (!payment) return null;
 

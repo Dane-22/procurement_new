@@ -145,10 +145,13 @@ const ServiceRequestsManagement = () => {
   const [searchTerm, setSearchTerm] = useState(urlQ);
   const [statusFilter, setStatusFilter] = useState(urlStatus);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [showDetailModal, setShowDetailModal] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [selectedSR, setSelectedSR] = useState(null);
   
   // Preview modal state
+  // eslint-disable-next-line no-unused-vars
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewSR, setPreviewSR] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);

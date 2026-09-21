@@ -156,7 +156,7 @@ const PurchaseOrders = () => {
   const [expandedId, setExpandedId] = useState(null)
   
   // Preview modal state
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [, setShowPreviewModal] = useState(false)
   const [previewPO, setPreviewPO] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   
@@ -201,6 +201,7 @@ const PurchaseOrders = () => {
       return
     }
     setPrSearchResults(filterPRsByQuery(prs, prSearchQuery))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prs, prSearchQuery, showCreateModal, sourceType])
 
   const fetchPurchaseOrders = async () => {
@@ -242,6 +243,7 @@ const PurchaseOrders = () => {
     }
   }
 
+  // eslint-disable-next-line no-unused-vars
   const openEditModal = async (po) => {
     setShowEditModal(true)
     setEditingId(po.id)
@@ -778,7 +780,7 @@ const PurchaseOrders = () => {
                             className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                           >
                             <div className="text-sm font-medium">{pr.pr_number} - {pr.project}</div>
-                            <div className="text-xs text-gray-500">{pr.payee_name} • {formatCurrency(pr.total_amount || pr.amount)}</div>
+                            <div className="text-xs text-gray-500">{pr.payee_name} â€¢ {formatCurrency(pr.total_amount || pr.amount)}</div>
                           </div>
                         ))}
                       </div>

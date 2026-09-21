@@ -100,7 +100,7 @@ const DisbursementVouchers = () => {
   const [payingVoucherId, setPayingVoucherId] = useState(null);
   const [, setShowPreviewModal] = useState(false);
   const [previewVoucher, setPreviewVoucher] = useState(null);
-  const [, setPreviewLoading] = useState(false);
+  const [previewLoading] = useState(false);
   const { user } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -599,8 +599,8 @@ const DisbursementVouchers = () => {
                               <p className="font-medium text-sm text-gray-900">{po.po_number}</p>
                               <p className="text-xs text-gray-500">
                                 {po.supplier_name}
-                                {po.scheduled_payment_date ? ` â€¢ Due: ${formatDate(po.scheduled_payment_date)}` : ''}
-                                {' â€¢ '}
+                                {po.scheduled_payment_date ? ` Ã¢â‚¬Â¢ Due: ${formatDate(po.scheduled_payment_date)}` : ''}
+                                {' Ã¢â‚¬Â¢ '}
                                 {formatCurrency(po.scheduled_amount || po.total_amount)}
                               </p>
                             </div>
@@ -630,7 +630,7 @@ const DisbursementVouchers = () => {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-medium text-sm text-gray-900">{pr.pr_number}{getSourceTypeLabel(pr)}</p>
-                              <p className="text-xs text-gray-500">{pr.payee_name} â€¢ {formatCurrency(pr.amount)}</p>
+                              <p className="text-xs text-gray-500">{pr.payee_name} Ã¢â‚¬Â¢ {formatCurrency(pr.amount)}</p>
                             </div>
                             {selectedSource?.id === pr.id && <CheckCircle className="w-5 h-5 text-yellow-500" />}
                           </div>
@@ -666,7 +666,7 @@ const DisbursementVouchers = () => {
                             <div className="flex items-center justify-between">
                               <div>
                                 <p className="font-medium text-sm text-gray-900">{po.po_number}{typeLabel}</p>
-                                <p className="text-xs text-gray-500">{po.payee_name} â€¢ {formatCurrency(po.amount)}</p>
+                                <p className="text-xs text-gray-500">{po.payee_name} Ã¢â‚¬Â¢ {formatCurrency(po.amount)}</p>
                               </div>
                               {selectedSource?.id === po.id && <CheckCircle className="w-5 h-5 text-yellow-500" />}
                             </div>
@@ -703,11 +703,11 @@ const DisbursementVouchers = () => {
                           >
                             <div className="min-w-0 pr-3">
                               <p className="text-sm font-medium text-gray-900">
-                                {schedule.payment_date} â€¢ {formatCurrency(schedule.amount)}
+                                {schedule.payment_date} Ã¢â‚¬Â¢ {formatCurrency(schedule.amount)}
                               </p>
                               <p className="text-xs text-gray-500">
                                 {schedule.due_label}
-                                {schedule.note ? ` â€¢ ${schedule.note}` : ''}
+                                {schedule.note ? ` Ã¢â‚¬Â¢ ${schedule.note}` : ''}
                               </p>
                             </div>
                             <input

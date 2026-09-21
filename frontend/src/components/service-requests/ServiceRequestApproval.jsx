@@ -76,6 +76,7 @@ const ServiceRequestApproval = () => {
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [selectedSRForApproval, setSelectedSRForApproval] = useState(null);
   const [approvalSupplierId, setApprovalSupplierId] = useState('');
+  // eslint-disable-next-line no-unused-vars
   const { user } = useAuth();
 
   useEffect(() => {

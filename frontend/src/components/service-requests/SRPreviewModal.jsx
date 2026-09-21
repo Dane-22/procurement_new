@@ -100,7 +100,7 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, disabled 
   );
 };
 
-const SRPreviewModal = ({ sr, loading, onClose, onApprove, onHold, processingId, readOnly }) => {
+const SRPreviewModal = ({ sr, onClose, onApprove, onHold, processingId, readOnly }) => {
   if (!sr) return null;
 
   const handleClose = (e) => {

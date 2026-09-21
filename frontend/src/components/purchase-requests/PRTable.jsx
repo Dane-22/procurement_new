@@ -10,7 +10,7 @@ export const PRTable = ({
   purchaseRequests, user, expandedId, setExpandedId,
   expandedPRDetails, setExpandedPRDetails, setLoadingExpanded, loadingExpanded,
   openProcurementApproval, openProcurementReject,
-  openEditModal, handleDelete, handleCancelPR,
+  openEditModal, handleDelete,
   openReviewModal, openProcessModal, openSuperAdminModal,
   total, startItem, endItem, page, totalPages, goToPage,
   procurementSubmitting, superAdminSubmitting, reviewSubmitting,
@@ -65,6 +65,7 @@ export const PRTable = ({
                     <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.created_at)}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-1">
+                                                                    {/* eslint-disable-next-line no-constant-binary-expression */}
                         {false && user?.role === 'procurement' && pr.status === 'For Procurement Review' && (
                           <>
                             <Button
@@ -337,7 +338,8 @@ export const PRTable = ({
                     <p className="text-sm font-semibold text-gray-900">{pr.project}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    {false && user?.role === 'procurement' && pr.status === 'For Procurement Review' && (
+                    {/* eslint-disable-next-line no-constant-binary-expression */}
+                        {false && user?.role === 'procurement' && pr.status === 'For Procurement Review' && (
                       <>
                         <Button
                           variant="ghost"

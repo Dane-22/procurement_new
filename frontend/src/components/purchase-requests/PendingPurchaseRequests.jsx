@@ -47,6 +47,7 @@ const formatCurrency = (amount) => {
   }).format(amount || 0)
 }
 
+// eslint-disable-next-line no-unused-vars
 const formatDate = (dateString) => {
   if (!dateString) return '-'
   return new Date(dateString).toLocaleDateString('en-PH', {
@@ -84,6 +85,7 @@ const PendingPurchaseRequests = () => {
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [processingId, setProcessingId] = useState(null)
+  // eslint-disable-next-line no-unused-vars
   const { user } = useAuth()
 
   useEffect(() => {

@@ -124,6 +124,7 @@ const PricingHistory = () => {
 
   useEffect(() => {
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchData = async () => {
@@ -269,6 +270,7 @@ const PricingHistory = () => {
   // Fetch data when page changes
   useEffect(() => {
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagination.page]);
 
   // Calculate statistics

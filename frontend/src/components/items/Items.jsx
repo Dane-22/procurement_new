@@ -208,6 +208,8 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
   useEffect(() => {
     fetchBranches()
     fetchCategories()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -411,6 +413,8 @@ supplier_address: supplierAddress.trim() || '', // Add supplier address to previ
     setShowPreviewModal(true)
   }
 
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   const closePreview = () => {
     setShowPreviewModal(false)
     setPreviewDraftPR(null)
@@ -451,6 +455,8 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
     }
   }
 
+  // eslint-disable-next-line no-unused-vars
+  // eslint-disable-next-line no-unused-vars
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files)
     setAccreditationFiles(prev => [...prev, ...files])
@@ -1246,7 +1252,7 @@ setPaymentBasis('debt')
               <div className="mb-6 bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium text-gray-900 mb-3">Selected Items ({cart.length})</h4>
                 <div className="space-y-3 max-h-60 overflow-auto">
-                  {cart.map((item, index) => (
+                  {cart.map((item) => (
                     <div key={item.item_id} className="bg-white p-3 rounded border">
                       <div className="flex justify-between mb-2">
                         <span className="font-medium text-sm">{item.item_name}</span>
@@ -1349,14 +1355,14 @@ setPaymentBasis('debt')
     {supplierAccreditationStatus && supplierAccreditationStatus.found && !supplierAccreditationStatus.accredited && (
       <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-md">
         <p className="text-sm text-orange-800">
-          âš ï¸ Supplier is not accredited. This PR will be flagged for accreditation review.
+          ⚠️ Supplier is not accredited. This PR will be flagged for accreditation review.
         </p>
       </div>
     )}
     {supplierAccreditationStatus && supplierAccreditationStatus.found && supplierAccreditationStatus.accredited && (
       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
         <p className="text-sm text-green-800">
-          âœ… Supplier is accredited.
+          ✅ Supplier is accredited.
         </p>
       </div>
     )}

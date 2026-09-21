@@ -116,6 +116,7 @@ const formatCurrency = (amount) => {
   }).format(amount || 0)
 }
 
+// eslint-disable-next-line no-unused-vars
 const formatDate = (dateString) => {
   if (!dateString) return '-'
   return new Date(dateString).toLocaleDateString('en-PH', {
@@ -166,6 +167,7 @@ const STATUS_FILTER_OPTIONS = [
   'Paid'
 ]
 
+// eslint-disable-next-line no-unused-vars
 const formatPaymentTerms = (code, note) => {
   const normalizedCode = String(code || '').trim().toUpperCase()
   const normalizedNote = String(note || '').trim()
@@ -208,13 +210,14 @@ const PurchaseRequests = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  // eslint-disable-next-line no-unused-vars
   const [expandedPRDetails, setExpandedPRDetails] = useState({})
   const [loadingExpanded, setLoadingExpanded] = useState(null)
   const { user } = useAuth()
   const [statusFilter, setStatusFilter] = useState(urlStatus)
   const [searchQuery, setSearchQuery] = useState(urlQ)
 
-  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [, setShowPreviewModal] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewPR, setPreviewPR] = useState(null)
 

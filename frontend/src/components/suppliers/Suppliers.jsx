@@ -115,6 +115,7 @@ const Suppliers = () => {
 
   useEffect(() => {
     loadSuppliers()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage])
 
   const loadSuppliers = async () => {

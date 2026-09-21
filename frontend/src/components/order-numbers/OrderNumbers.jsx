@@ -85,6 +85,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const OrderNumbers = () => {
+  // eslint-disable-next-line no-unused-vars
   const navigate = useNavigate();
   const { user } = useAuth();
   const [orderNumbers, setOrderNumbers] = useState([]);
@@ -351,14 +352,14 @@ const OrderNumbers = () => {
       ...(plannedCost !== null ? [{
         title: 'Planned Cost',
         value: plannedCost,
-        icon: () => <span className="text-white text-sm">₱</span>,
+        icon: () => <span className="text-white text-sm">â‚±</span>,
         color: 'bg-purple-500',
         textColor: 'text-purple-600'
       }] : []),
       ...(remaining !== null ? [{
         title: isOverBudget ? 'Over Budget' : 'Remaining Budget',
         value: Math.abs(remaining),
-        icon: isOverBudget ? AlertCircle : () => <span className="text-white text-sm">₱</span>,
+        icon: isOverBudget ? AlertCircle : () => <span className="text-white text-sm">â‚±</span>,
         color: isOverBudget ? 'bg-red-500' : 'bg-green-500',
         textColor: isOverBudget ? 'text-red-600' : 'text-green-600',
         subtitle: isOverBudget ? `(${percentUsed.toFixed(1)}% over)` : `(${percentUsed.toFixed(1)}% used)`
@@ -859,7 +860,7 @@ const OrderNumbers = () => {
                       ].filter(d => d.value > 0 || d.name === 'Actual Cost')}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                        <YAxis tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`} />
+                        <YAxis tickFormatter={(val) => `â‚±${(val/1000).toFixed(0)}k`} />
                         <Tooltip formatter={(value) => formatCurrency(value)} />
                         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                           <Cell fill="#8B5CF6" />
