@@ -88,9 +88,6 @@ const formatCurrency = (amount) => {
   }).format(amount || 0)
 }
 
-)
-}
-
 const StatusBadge = ({ status }) => {
   const getStatusColor = (status) => {
     const colors = {

@@ -11,6 +11,10 @@
   - `[ ]` Review as Super Admin
   - `[ ]` Receive Items
 
+### Mobile App Fixes
+- `[ ]` **Notification Sound:** Fix notification sound issues in the mobile app (In Progress)
+- `[x]` **Date Picker:** Resolved issues with the mobile app date picker.
+
 ### Push Notifications (Web & Mobile)
 - `[x]` **Phase 1 Implementation:**
   - `[x]` Evaluate Web and Expo Push Notification registration.
@@ -20,7 +24,7 @@
 ### Mobile Notification Bell & Sounds
 - `[x]` **Phase 1 Implementation:**
   - `[x]` Develop in-app notification UI component (dropdown overlay).
-  - `[x]` Integrate alert sounds for new notifications.
+  - `[ ]` Integrate alert sounds for new notifications. (In Progress)
   - `[x]` Connect notification bell to real-time socket events.
   - `[x]` Perform UI refinement and cross-platform testing (iOS/Android).
   - `[x]` Finalize layout consistency across custom headers (avoiding Expo Go UI overlaps).

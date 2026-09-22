@@ -1,5 +1,5 @@
 # Daily Project Status Report
-**Date:** September 12, 2026
+**Date:** September 21, 2026
 
 ## Overview
 This report outlines the current status of the Procurement System project, including the Web Application (used on computers), the Mobile Application (used on phones/tablets), and the Backend Server (the database and logic that powers everything).
@@ -211,6 +211,7 @@ This report outlines the current status of the Procurement System project, inclu
 - **Mobile Rate Limiting & Pagination:** To prevent the mobile app from lagging when dealing with thousands of historical records, we implemented robust pagination (rate limiting) on both the "All Requests" and "Approvals" screens. The app now only fetches 10 items at a time and automatically loads more as you scroll down (infinite scrolling). We also built a new lightning-fast `/counts` backend route to accurately calculate and display the total numbers on the UI tabs (e.g., `ALL (12)`) without needing to download all the data.
 - **Inline Quick Actions & Offline Approvals:** We added inline "Approve" and "Reject" buttons directly to the pending approvals list. We also integrated rate limiters (loading states) to prevent accidental double-clicks and connected these actions to the offline synchronization engine so approvals queue safely if the internet disconnects.
 - **Mobile Alert Sounds (expo-audio) & User-Specific Notifications:** Successfully integrated alert sounds for new notifications. Migrated the legacy `expo-av` dependency to the modern `expo-audio` package to ensure full compatibility with the latest Expo Go client. To resolve an unexpected Metro bundler caching crash, we migrated the audio asset to a natively supported `.mp3` format. Additionally, finalized the in-app UI component for the notification dropdown and standardized its position across all custom headers and native tabs with a unified 80px right-margin to consistently prevent overlap with the Expo Go developer menu. The mobile socket connection was refactored to explicitly join `user_{ID}` and `role_{ROLE}` rooms on authentication, guaranteeing that real-time notifications are securely isolated to their intended recipients.
+- **Date Picker Fix:** Resolved issues with the date picker in the mobile application to ensure reliable date selection.
 - **Push Notification Fixes:** Fixed a routing bug where tapping a notification on mobile would result in a 404 error rather than opening the PR preview. Additionally, updated the notification text to dynamically include the full name of the PR creator.
 
 ### Web Application (Main Computer System)
@@ -244,6 +245,7 @@ This report outlines the current status of the Procurement System project, inclu
 
 ## 2. Ongoing Tasks 🔄
 - **Test Entire Purchase Request Flow:** Perform comprehensive end-to-end testing of the PR flow to ensure all roles and states transition correctly.
+- **Mobile Notification Sound Fix:** Working on fixing the notification sound in the mobile app (Currently in progress).
 - **Push Notifications (Web & Mobile):** Rewrote the backend delivery engine to dispatch real-time Push Notifications simultaneously to Mobile (via Expo Push) and Web Browsers (via Web-Push and VAPID keys). This ensures users are notified of important events even when their apps/browsers are closed.
 
 ---

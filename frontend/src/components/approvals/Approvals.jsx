@@ -855,14 +855,6 @@ const Approvals = () => {
     }
   };
 
-   catch (error) {
-      console.error('Error deleting Reimbursement:', error);
-      alert(error.response?.data?.message || 'Failed to delete request');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const handleApproveReimbursement = async (id, status) => {
     const row = reimbursements.find((item) => item.id === id);
     if (blockIfLockedOrder(row?.order_number)) return;

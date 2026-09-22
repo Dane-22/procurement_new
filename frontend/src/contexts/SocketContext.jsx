@@ -12,6 +12,7 @@ export const SocketProvider = ({ children }) => {
     if (!user) {
       if (socket) {
         socket.disconnect();
+        // eslint-disable-next-line
         setSocket(null);
       }
       return;
