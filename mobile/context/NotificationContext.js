@@ -20,7 +20,7 @@ export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   
   // Use expo-audio player
-  const player = useAudioPlayer(require('../assets/sounds/notification.mp3'));
+  const player = useAudioPlayer(require('../assets/sounds/notification.wav'));
   
   const socket = useSocket();
   const { user } = useContext(AuthContext);
@@ -46,6 +46,7 @@ export function NotificationProvider({ children }) {
         await setAudioModeAsync({
           playsInSilentMode: true,
           shouldPlayInBackground: true,
+          interruptionMode: 'mixWithOthers',
         });
       } catch (e) {
         console.warn('Could not configure audio mode', e);
@@ -62,7 +63,7 @@ export function NotificationProvider({ children }) {
       // Play sound
       if (player) {
         try {
-          player.seekTo(0);
+          await player.seekTo(0);
           player.play();
         } catch (err) {
           console.warn('Failed to play sound', err);

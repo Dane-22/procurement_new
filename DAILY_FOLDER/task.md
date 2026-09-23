@@ -12,7 +12,7 @@
   - `[ ]` Receive Items
 
 ### Mobile App Fixes
-- `[ ]` **Notification Sound:** Fix notification sound issues in the mobile app (In Progress)
+- `[x]` **Notification Sound:** Fix notification sound issues in the mobile app
 - `[x]` **Date Picker:** Resolved issues with the mobile app date picker.
 
 ### Push Notifications (Web & Mobile)
@@ -24,7 +24,7 @@
 ### Mobile Notification Bell & Sounds
 - `[x]` **Phase 1 Implementation:**
   - `[x]` Develop in-app notification UI component (dropdown overlay).
-  - `[ ]` Integrate alert sounds for new notifications. (In Progress)
+  - `[x]` Integrate alert sounds for new notifications.
   - `[x]` Connect notification bell to real-time socket events.
   - `[x]` Perform UI refinement and cross-platform testing (iOS/Android).
   - `[x]` Finalize layout consistency across custom headers (avoiding Expo Go UI overlaps).
