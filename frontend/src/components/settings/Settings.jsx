@@ -270,7 +270,7 @@ const Settings = () => {
       </div>
 
       {/* Advanced Settings (Super Admin Only) */}
-      {user?.role === 'super_admin' && (
+      {['super_admin', 'ceo'].includes(user?.role) && (
         <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200 bg-red-50 rounded-t-lg">
             <div className="flex items-center gap-3">

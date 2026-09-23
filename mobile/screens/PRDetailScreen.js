@@ -72,7 +72,7 @@ export default function PRDetailScreen({ route, navigation }) {
     if (pr.status === 'For Engineer Review' && userRole === 'engineer') return true;
     if (pr.status === 'For Admin Review' && userRole === 'admin') return true;
     if (pr.status === 'For Super Admin Final Approval' && userRole === 'super_admin') return true;
-    if (pr.status === 'For Super Admin Rep Review' && userRole === 'super_admin_rep') return true;
+    if (pr.status === 'For Senior Project Manager Review' && userRole === 'senior_project_manager') return true;
     return false;
   };
 
@@ -95,7 +95,7 @@ export default function PRDetailScreen({ route, navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Status Tracking</Text>
           <View style={styles.timeline}>
-            {['Pending', 'Under Admin Review', 'For Super Admin Rep Review', 'For Super Admin Final Approval', 'For Purchase'].map((step, index, arr) => {
+            {['Pending', 'Under Admin Review', 'For Senior Project Manager Review', 'For Super Admin Final Approval', 'For Purchase'].map((step, index, arr) => {
               const isActive = pr.status === step;
               const isPast = arr.indexOf(pr.status) > index || pr.status === 'Completed' || pr.status === 'Received' || pr.status === 'PO Created';
               const isRejected = pr.status === 'Rejected' && isActive;

@@ -10,7 +10,7 @@ import { addPendingRequest } from '../services/offlineSync';
 const REVIEW_STATUSES = new Set([
   'For Engineer Review',
   'For Admin Review',
-  'For Super Admin Rep Review'
+  'For Senior Project Manager Review'
 ]);
 
 const getPendingReviewerRole = (requesterRole) => {
@@ -23,7 +23,7 @@ const getReviewerRoleLabel = (role) => {
   const roles = {
     engineer: 'Engineer',
     admin: 'Admin',
-    super_admin_rep: 'Super Admin Rep',
+    senior_project_manager: 'Senior Project Manager',
     super_admin: 'Super Admin',
     procurement: 'Procurement'
   };
@@ -201,7 +201,7 @@ export default function PRReviewScreen({ route, navigation }) {
     if (pr.status === 'For Engineer Review' && userRole === 'engineer') return true;
     if ((pr.status === 'For Admin Review' || pr.status === 'For Admin Processing' || pr.status === 'Pending Admin Processing') && userRole === 'admin') return true;
     if (pr.status === 'For Super Admin Final Approval' && userRole === 'super_admin') return true;
-    if (pr.status === 'For Super Admin Rep Review' && userRole === 'super_admin_rep') return true;
+    if (pr.status === 'For Senior Project Manager Review' && userRole === 'senior_project_manager') return true;
     return false;
   };
 

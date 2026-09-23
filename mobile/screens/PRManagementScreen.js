@@ -24,7 +24,7 @@ const timeAgo = (dateStr) => {
 
 const STATUS_MAPPING = {
   'PENDING': ['For Admin Processing', 'Draft'],
-  'FOR APPROVAL': ['For Engineer Review', 'For Admin Review', 'For Super Admin Rep Review', 'For Super Admin Final Approval'],
+  'FOR APPROVAL': ['For Engineer Review', 'For Admin Review', 'For Senior Project Manager Review', 'For Super Admin Final Approval'],
   'APPROVED': ['APPROVED'],
   'REJECTED': ['REJECTED', 'Cancelled']
 };

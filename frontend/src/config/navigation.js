@@ -24,7 +24,7 @@ export const navigationItems = [
     path: '/dashboard',
     label: 'Dashboard',
     icon: LayoutDashboard,
-    roles: ['engineer', 'procurement', 'admin', 'super_admin_rep', 'super_admin']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
   
   // Purchase Requests
@@ -32,7 +32,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-requests',
     label: 'Purchase Requests',
     icon: FileText,
-    roles: ['engineer', 'procurement', 'admin', 'super_admin_rep']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager']
   },
   
   // For Reviews
@@ -40,7 +40,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-requests?tab=reviews',
     label: 'For Reviews',
     icon: CheckCircle,
-    roles: ['engineer', 'procurement', 'admin', 'super_admin_rep']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager']
   },
 
   // For Admin Processing
@@ -48,7 +48,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-requests?tab=admin_processing',
     label: 'For Admin Processing',
     icon: FileText,
-    roles: ['admin', 'super_admin_rep', 'super_admin']
+    roles: ['admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
 
   // Service Requests - TEMPORARILY COMMENTED OUT
@@ -56,7 +56,7 @@ export const navigationItems = [
   //   path: '/dashboard/service-requests',
   //   label: 'Service Requests',
   //   icon: ClipboardCheck,
-  //   roles: ['engineer', 'procurement', 'admin', 'super_admin']
+  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
   // },
 
   // Approvals - for super admin
@@ -64,7 +64,7 @@ export const navigationItems = [
     path: '/dashboard/approvals',
     label: 'Approvals',
     icon: Gavel,
-    roles: ['super_admin']
+    roles: ['ceo', 'super_admin']
   },
   
   // Items
@@ -72,7 +72,7 @@ export const navigationItems = [
     path: '/dashboard/items',
     label: 'Items',
     icon: Package,
-    roles: ['engineer', 'procurement', 'admin', 'super_admin_rep', 'super_admin']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
 
   // Pricing History - TEMPORARILY COMMENTED OUT
@@ -80,7 +80,7 @@ export const navigationItems = [
   //   path: '/dashboard/pricing-history',
   //   label: 'Pricing History',
   //   icon: History,
-  //   roles: ['procurement', 'admin', 'super_admin']
+  //   roles: ['procurement', 'admin', 'ceo', 'super_admin']
   // },
 
   // Suppliers
@@ -88,7 +88,7 @@ export const navigationItems = [
     path: '/dashboard/suppliers',
     label: 'Suppliers',
     icon: Truck,
-    roles: ['admin', 'super_admin']
+    roles: ['admin', 'ceo', 'super_admin']
   },
   
   // Purchase Orders
@@ -96,7 +96,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-orders',
     label: 'Purchase Orders',
     icon: ShoppingCart,
-    roles: ['admin', 'super_admin', 'super_admin_rep']
+    roles: ['admin', 'ceo', 'super_admin', 'senior_project_manager']
   },
 
   // Payment Requests - TEMPORARILY COMMENTED OUT
@@ -104,7 +104,7 @@ export const navigationItems = [
   //   path: '/dashboard/payment-requests',
   //   label: 'Payment Requests',
   //   icon: Receipt,
-  //   roles: ['admin', 'super_admin']
+  //   roles: ['admin', 'ceo', 'super_admin']
   // },
 
   // Payment Orders - TEMPORARILY COMMENTED OUT
@@ -112,7 +112,7 @@ export const navigationItems = [
   //   path: '/dashboard/payment-orders',
   //   label: 'Payment Orders',
   //   icon: DollarSign,
-  //   roles: ['admin', 'super_admin']
+  //   roles: ['admin', 'ceo', 'super_admin']
   // },
 
   // Disbursement Vouchers - TEMPORARILY COMMENTED OUT
@@ -120,7 +120,7 @@ export const navigationItems = [
   //   path: '/dashboard/disbursement-vouchers',
   //   label: 'Disbursement Vouchers',
   //   icon: FileText,
-  //   roles: ['admin', 'super_admin']
+  //   roles: ['admin', 'ceo', 'super_admin']
   // },
 
   // Order Numbers - TEMPORARILY COMMENTED OUT
@@ -128,7 +128,7 @@ export const navigationItems = [
   //   path: '/dashboard/order-numbers',
   //   label: 'Order Numbers',
   //   icon: Receipt,
-  //   roles: ['engineer', 'procurement', 'admin', 'super_admin']
+  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
   // },
 
   // Cash Requests - TEMPORARILY COMMENTED OUT
@@ -136,7 +136,7 @@ export const navigationItems = [
   //   path: '/dashboard/cash-requests',
   //   label: 'Cash Requests',
   //   icon: DollarSign,
-  //   roles: ['engineer', 'procurement', 'admin', 'super_admin']
+  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
   // },
 
   // Reimbursements - TEMPORARILY COMMENTED OUT
@@ -144,7 +144,7 @@ export const navigationItems = [
   //   path: '/dashboard/reimbursements',
   //   label: 'Reimbursements',
   //   icon: Receipt,
-  //   roles: ['engineer', 'procurement', 'admin', 'super_admin']
+  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
   // },
 
   // Settings
@@ -152,7 +152,7 @@ export const navigationItems = [
     path: '/dashboard/employees',
     label: 'Employees',
     icon: Users,
-    roles: ['super_admin']
+    roles: ['ceo', 'super_admin']
   },
 
   // Audit Logs
@@ -160,7 +160,7 @@ export const navigationItems = [
     path: '/dashboard/audit-logs',
     label: 'Audit Logs',
     icon: Activity,
-    roles: ['super_admin']
+    roles: ['ceo', 'super_admin']
   },
   
   // Settings
@@ -168,7 +168,7 @@ export const navigationItems = [
     path: '/dashboard/settings',
     label: 'Settings',
     icon: Settings,
-    roles: ['engineer', 'procurement', 'admin', 'super_admin_rep', 'super_admin']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
 
   // Attendance - TEMPORARILY COMMENTED OUT
@@ -176,7 +176,7 @@ export const navigationItems = [
   //   path: '/dashboard/attendance',
   //   label: 'Attendance',
   //   icon: UserCheck,
-  //   roles: ['engineer', 'procurement', 'admin', 'super_admin'],
+  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin'],
   //   externalUrl: 'https://attendacev2.xandree.com/'
   // }
 ];

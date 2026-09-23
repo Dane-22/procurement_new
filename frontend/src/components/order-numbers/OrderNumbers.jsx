@@ -193,7 +193,7 @@ const OrderNumbers = () => {
     }
   };
 
-  const canLockOrderNumber = ['procurement', 'admin', 'super_admin'].includes(user?.role);
+  const canLockOrderNumber = ['procurement', 'admin', 'ceo', 'super_admin'].includes(user?.role);
   const isSelectedOrderLocked = Boolean(dashboardData?.lock?.isLocked);
 
   const handleLockOrderNumber = async () => {

@@ -125,12 +125,12 @@ export async function getEngineers() {
 
 /**
  * Get super admin reps who should be notified
- * @returns {Promise<number[]>} - Array of user IDs with super_admin_rep role
+ * @returns {Promise<number[]>} - Array of user IDs with senior_project_manager role
  */
 export async function getSuperAdminReps() {
   try {
     const [users] = await db.query(`
-      SELECT id FROM employees WHERE role = 'super_admin_rep' AND is_active = 1
+      SELECT id FROM employees WHERE role = 'senior_project_manager' AND is_active = 1
     `);
     return users.map(u => u.id);
   } catch (error) {
@@ -161,7 +161,7 @@ export async function getReviewersForPR(requesterRole) {
       const superAdminReps = await getSuperAdminReps();
       const superAdmins = await getSuperAdmins();
       reviewers = [...admins, ...superAdminReps, ...superAdmins];
-    } else if (requesterRole === 'super_admin_rep') {
+    } else if (requesterRole === 'senior_project_manager') {
       // If requester is Super Admin Rep: reviewers are Super Admin Rep + Super Admin
       const superAdminReps = await getSuperAdminReps();
       const superAdmins = await getSuperAdmins();

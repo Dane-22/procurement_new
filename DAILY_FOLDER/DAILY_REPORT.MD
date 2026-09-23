@@ -1,5 +1,5 @@
 # Daily Project Status Report
-**Date:** September 21, 2026
+**Date:** September 23, 2026
 
 ## Overview
 This report outlines the current status of the Procurement System project, including the Web Application (used on computers), the Mobile Application (used on phones/tablets), and the Backend Server (the database and logic that powers everything).
@@ -13,7 +13,7 @@ This report outlines the current status of the Procurement System project, inclu
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                     PR APPROVAL FLOW - OVERVIEW                              │
 │                                                                              │
-│  Engineer → Engineer Review → Admin Review → Super Admin│
+│  Engineer → Engineer Review → Admin Review → Senior Project Manager │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ─────────────────────────────────────
@@ -83,7 +83,7 @@ This report outlines the current status of the Procurement System project, inclu
       ▼             │ Status: RETURNED        │
 ┌────────────────────────┐  └─────────────────────────┘
 │  Final Approval (All    │            │
-│  Super Admin Reps)     │            ▼
+│  Senior Project Mgrs)   │            ▼
 └──────────────┬─────────┘   ┌─────────────────────────┐
                │             │ Engineer edits & re-    │
      ┌─────────┴─────────┐   │ submits PR              │
@@ -123,13 +123,13 @@ This report outlines the current status of the Procurement System project, inclu
                                 └──► (Back to Step 2)
 
 ─────────────────────────────────────
- STEP 4: Super Admin Rep Review PR
+ STEP 4: Senior Project Manager Review PR
 ─────────────────────────────────────
 
 ┌──────────────────────────────┐
-│ All Super Admin Reps         │
+│ All Senior Project Managers  │
 │ Review PR                    │
-│ (Each Rep must respond)      │
+│ (Each Manager must respond)  │
 └──────────────┬───────────────┘
                │
       ┌────────┴────────┐
@@ -139,9 +139,9 @@ This report outlines the current status of the Procurement System project, inclu
       ▼                 ▼
 ┌─────────────┐   ┌─────────────────────────┐
 │ Check Amount│   │ PR sent back to the     │
-│ < 10,000 -> │   │ Engineer who created it │
+│ < 100,000 -> │   │ Engineer who created it │
 │ FOR PURCHASE│   │ to EDIT the PR          │
-│ >= 10,000 ->│   │ (Notifies requester)    │
+│ >= 100,000 ->│   │ (Notifies requester)    │
 │ Proceed to  │   │ Status: RETURNED        │
 │ Step 5      │   └─────────────────────────┘
                             │
@@ -155,11 +155,11 @@ This report outlines the current status of the Procurement System project, inclu
                                 └──► (Back to Step 2)
 
 ─────────────────────────────────────
- STEP 5: Super Admin Review PR
+ STEP 5: Super Admin & CEO Review PR
 ─────────────────────────────────────
 
 ┌──────────────────────────────┐
-│ Super Admin                  │
+│ Super Admin & CEO            │
 │ Reviews PR                   │
 └──────────────┬───────────────┘
                │
@@ -218,7 +218,7 @@ This report outlines the current status of the Procurement System project, inclu
 - **Enhanced System Audit Logs:** The web application now features a completely revamped Audit Log interface for Super Admins. It includes dynamic backend-driven filters with a premium Tailwind UI aesthetic, a responsive filter grid with integrated date-range pickers, advanced search, a detailed viewer modal for inspecting payload changes, and a robust "Export to CSV" functionality for compliance reporting.
 - **Database Backup System:** Super Admins can now easily download a full backup of the system database with a single click from the Settings page. This ensures company data is safe and easily recoverable.
 - **Purchase Request (PR) Bypass Feature:** Authorized Super Admins can securely skip or "bypass" standard approval steps for urgent requests. The system automatically tracks who bypassed it and notifies everyone involved.
-- **Super Admin Global Flagging (Reject & Hold):** Super Admins now have global oversight of all Purchase Requests, including those under 10,000 (which normally go to Reps). Super Admins can view these PRs in their Pending tab and can immediately Reject or Hold them from both the web dashboard and the mobile app, regardless of the PR's current approval stage.
+- **Super Admin Global Flagging (Reject & Hold):** Super Admins now have global oversight of all Purchase Requests, including those under 100,000 (which normally go to Reps). Super Admins can view these PRs in their Pending tab and can immediately Reject or Hold them from both the web dashboard and the mobile app, regardless of the PR's current approval stage.
 - **Payment Schedules:** The web application successfully tracks when payments are due for various requests (Cash, Services, Reimbursments) and issues reminders automatically.
 - **Super Admin & Engineer Workflow Stability:** All primary user flows for Engineers (creating/editing PRs) and Super Admins (reviewing, bypassing, managing users) have been stress-tested manually on both Web and Mobile platforms and verified stable.
 - **PR Review Workflow UI Fixes:** Fixed a display bug in the PR Details modal where the "Super Admin Rep Review" and "Super Admin Final Approval" stages were incorrectly labeling pending reviewers as "Engineer review" due to missing status mappings. The UI now accurately reflects all current review stages and pending reviewer roles.
@@ -227,7 +227,7 @@ This report outlines the current status of the Procurement System project, inclu
 - **Purchase Request Processing Stability (Bug Fix):** Resolved a critical issue where Admins finalizing a Purchase Request (adding custom suppliers and payment schedules) would encounter a `500 Internal Server Error` or `400 Bad Request`. 
   - *Problem:* A typo in the backend (`sched.paymentDate` instead of `sched.payment_date`) was causing the database to crash when attempting to insert missing data. Additionally, creating a custom "Other" supplier directly from the frontend could result in "orphaned" database entries if the subsequent PR submission failed.
   - *Action:* Fixed the variable naming typo to correctly save payment schedules. Moved the custom "Other" supplier creation into the main backend database transaction, ensuring it safely rolls back and prevents duplicates if any errors occur. Finally, implemented robust frontend validation (verifying unit prices > 0, ensuring custom supplier names aren't empty, and precisely matching payment schedule totals) with clear UI alerts to prevent invalid data from ever reaching the server.
-- **Amount-Based PR Routing & Engineer Reviews:** Enforced standardized routing rules for Purchase Requests based on their total amount. PRs less than 10,000 are explicitly routed to Super Admin Representatives for review, while PRs 10,000 or greater automatically bypass the Super Admin Rep stage and go directly to Super Admin Final Approval (automatically cleaning up any pending Rep review records). Additionally, we verified that the system strictly requires all engineers to approve a request before advancing to subsequent stages.
+- **Amount-Based PR Routing & Engineer Reviews:** Enforced standardized routing rules for Purchase Requests based on their total amount. PRs less than 100,000 are explicitly routed to Super Admin Representatives for review, while PRs 100,000 or greater automatically bypass the Super Admin Rep stage and go directly to Super Admin Final Approval (automatically cleaning up any pending Rep review records). Additionally, we verified that the system strictly requires all engineers to approve a request before advancing to subsequent stages.
 - **Item Request Approval Flow Correction:** Corrected a logic gap in the PR state machine where Mobile Item Requests were getting stuck at "For Admin Review" instead of advancing to "For Super Admin Rep Review". When an Admin processes the Item Request (by adding pricing), the backend now automatically auto-approves their administrative review record, keeping the workflow strictly in sync with the documented System Flowchart rules.
 - **Global Role Bypassing (Super Admin Flagging):** Refactored backend endpoints (`PUT /:id/status` and `POST /:id/review`) to specifically allow `super_admin` users to bypass rigid review validations when placing a PR On Hold or Rejecting it.
 - **Automatic Data Cleanup:** The database is now configured to automatically clean up related files and schedules if a main request is deleted (e.g., if a Purchase Order is deleted, its attachments are also deleted safely).
@@ -242,6 +242,10 @@ This report outlines the current status of the Procurement System project, inclu
 - **Code Quality & CI/CD Pipeline:** Enforced structural frontend checks with ESLint. Bootstrapped a complete GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) that triggers on pushes to the `main` branch to automatically run security audits, linting, and all our test suites, and upon success, automatically deploy the application natively to the production VPS server (`procurement.xandree.com`) via SSH. We have resolved all strict frontend linting errors and pipeline timeouts to ensure clean and stable automated releases.
 - **Pipeline Maintenance & Deprecation Fixes:** Successfully diagnosed and resolved a broken GitHub Actions `frontend` job caused by orphaned syntax errors (`PaymentOrders.jsx`, `Approvals.jsx`) and an invalid React Hooks state update (`react-hooks/set-state-in-effect` in `SocketContext.jsx`). Additionally, upgraded the `actions/checkout` and `actions/setup-node` actions from `v3` to `v4` in `.github/workflows/ci.yml` to clear Node.js 20 deprecation warnings, ensuring the CI/CD pipeline remains green and up-to-date.
 
+### Items Management & Role Restructuring
+- **Items Management Fixes:** Standardized the item database by safely removing garbage test entries and normalizing item descriptions (e.g., standardizing nail and rivet dimension formats). Fixed a major `400 Bad Request` backend bug that was preventing bulk item creation. Also, updated the grouping logic to correctly bundle items with similar names but varying dimensions and units (like nails, wood, etc.).
+- **Role System Overhaul:** Officially deprecated the legacy `super_admin_rep` role, replacing it entirely with `senior_project_manager` across the database ENUMs, backend authentication rules, the Web UI, and the Mobile App.
+- **CEO Role Integration:** Successfully created and integrated a new `ceo` role. The CEO has been embedded at the highest authorization tier alongside Super Admins, granting them identical visibility, access bypass controls, and final approval authorities across all platforms (Web and Mobile).
 ---
 
 ## 2. Ongoing Tasks 🔄

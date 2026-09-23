@@ -490,7 +490,7 @@ router.get('/:id', authenticate, async (req, res) => {
       }
     }
 
-    // Get per-item rejection remarks if PR is rejected or sent back to super_admin_rep
+    // Get per-item rejection remarks if PR is rejected or sent back to senior_project_manager
     let itemRemarks = [];
     if (pr.status === 'Rejected') {
       const [remarks] = await db.query(`
@@ -1023,7 +1023,7 @@ router.put('/:id/draft', authenticate, async (req, res) => {
   }
 });
 
-// Submit Draft PR (engineer only) - moves to For Super Admin Rep Review and notifies super_admin_rep
+// Submit Draft PR (engineer only) - moves to For Senior Project Manager Review and notifies senior_project_manager
 router.put('/:id/submit-draft', authenticate, async (req, res) => {
   let conn;
   try {
@@ -1171,7 +1171,7 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
     const pr = prs[0];
 
-    const isSuperAdminReject = req.user.role === 'super_admin' && review_status === 'rejected';
+    const isSuperAdminReject = ['super_admin', 'ceo'].includes(req.user.role) && review_status === 'rejected';
 
     // Check if user is a reviewer for this PR
     const [reviewCheck] = await conn.query(
@@ -1207,12 +1207,12 @@ router.post('/:id/review', authenticate, async (req, res) => {
         return res.status(403).json({ message: 'This purchase request is currently awaiting Admin review. You do not have permission to review at this stage.' });
       }
 
-      if (currentStatus === 'For Super Admin Rep Review' && userRole !== 'super_admin_rep') {
+      if (currentStatus === 'For Senior Project Manager Review' && userRole !== 'senior_project_manager') {
         await conn.rollback();
         return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin Representative review. You do not have permission to review at this stage.' });
       }
 
-      if (currentStatus === 'For Super Admin Final Approval' && userRole !== 'super_admin') {
+      if (currentStatus === 'For Super Admin Final Approval' && !['super_admin', 'ceo'].includes(userRole)) {
         await conn.rollback();
         return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin final approval. You do not have permission to review at this stage.' });
       }
@@ -1333,7 +1333,7 @@ router.post('/:id/review', authenticate, async (req, res) => {
             `SELECT prr.review_status 
              FROM purchase_request_reviews prr
              JOIN employees e ON prr.reviewer_id = e.id
-             WHERE prr.purchase_request_id = ? AND e.role = 'super_admin_rep' AND e.is_active = 1`,
+             WHERE prr.purchase_request_id = ? AND e.role = 'senior_project_manager' AND e.is_active = 1`,
             [req.params.id]
           );
 
@@ -1358,29 +1358,29 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
           const totalAmount = parseFloat(pr.total_amount) || 0;
 
-          if (totalAmount >= 10000) {
+          if (totalAmount >= 100000) {
             // Bypass Super Admin Rep and go directly to Super Admin Final Approval
             newStatus = 'For Super Admin Final Approval';
             notificationRecipients = await getSuperAdmins();
             notificationTitle = 'PR Ready for Final Approval';
             notificationMessage = `Purchase Request ${pr.pr_number} has been reviewed by admins and is ready for your final approval`;
             
-            // Delete any pending super_admin_rep reviews since they are bypassed
+            // Delete any pending senior_project_manager reviews since they are bypassed
             await conn.query(
-              "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'super_admin_rep') AND review_status = 'pending'",
+              "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'senior_project_manager') AND review_status = 'pending'",
               [req.params.id]
             );
           } else if (repPending) {
             // Admins done, move to Super Admin Rep Review
-            newStatus = 'For Super Admin Rep Review';
+            newStatus = 'For Senior Project Manager Review';
             notificationRecipients = await getSuperAdminReps();
             notificationTitle = 'PR Ready for Super Admin Representative Review';
             notificationMessage = `Purchase Request ${pr.pr_number} has been reviewed by admins and is ready for Super Admin Representative review`;
           } else if (repApproved || repReviews.length === 0) {
-            // All done or no rep, and amount < 10000
+            // All done or no rep, and amount < 100000
             newStatus = 'For Purchase';
             notificationRecipients = await getSuperAdmins(); // Notify super admins anyway
-            notificationTitle = 'PR Approved (< 10,000)';
+            notificationTitle = 'PR Approved (< 100,000)';
             notificationMessage = `Purchase Request ${pr.pr_number} has been approved by Super Admin Representative and is ready for PO creation`;
           }
         }
@@ -1422,7 +1422,7 @@ router.post('/:id/review', authenticate, async (req, res) => {
           `SELECT prr.review_status 
            FROM purchase_request_reviews prr
            JOIN employees e ON prr.reviewer_id = e.id
-           WHERE prr.purchase_request_id = ? AND e.role = 'super_admin_rep' AND e.is_active = 1`,
+           WHERE prr.purchase_request_id = ? AND e.role = 'senior_project_manager' AND e.is_active = 1`,
           [req.params.id]
         );
         
@@ -1442,37 +1442,37 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
         const totalAmount = parseFloat(pr.total_amount) || 0;
 
-        if (totalAmount >= 10000) {
+        if (totalAmount >= 100000) {
           // Bypass Super Admin Rep and go directly to Super Admin Final Approval
           newStatus = 'For Super Admin Final Approval';
           notificationRecipients = await getSuperAdmins();
           notificationTitle = 'PR Ready for Final Approval';
           notificationMessage = `Purchase Request ${pr.pr_number} has been reviewed by admins and is ready for your final approval`;
           
-          // Delete any pending super_admin_rep reviews since they are bypassed
+          // Delete any pending senior_project_manager reviews since they are bypassed
           await conn.query(
-            "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'super_admin_rep') AND review_status = 'pending'",
+            "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'senior_project_manager') AND review_status = 'pending'",
             [req.params.id]
           );
         } else if (repPending) {
-          newStatus = 'For Super Admin Rep Review';
+          newStatus = 'For Senior Project Manager Review';
           notificationRecipients = await getSuperAdminReps();
           notificationTitle = 'PR Ready for Super Admin Representative Review';
           notificationMessage = `Purchase Request ${pr.pr_number} has been reviewed by admins and is ready for Super Admin Representative review`;
         } else if (repApproved || repReviews.length === 0) {
           newStatus = 'For Purchase';
           notificationRecipients = await getSuperAdmins();
-          notificationTitle = 'PR Approved (< 10,000)';
+          notificationTitle = 'PR Approved (< 100,000)';
           notificationMessage = `Purchase Request ${pr.pr_number} has been approved by Super Admin Representative and is ready for PO creation`;
         }
       }
-    } else if (pr.requester_role === 'super_admin_rep') {
+    } else if (pr.requester_role === 'senior_project_manager') {
       // Super Admin Rep requester: Super Admin Rep → Super Admin
       const [repReviews] = await conn.query(
         `SELECT prr.review_status 
          FROM purchase_request_reviews prr
          JOIN employees e ON prr.reviewer_id = e.id
-         WHERE prr.purchase_request_id = ? AND e.role = 'super_admin_rep' AND e.is_active = 1`,
+         WHERE prr.purchase_request_id = ? AND e.role = 'senior_project_manager' AND e.is_active = 1`,
         [req.params.id]
       );
 
@@ -1500,10 +1500,10 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
       if (repApproved || repReviews.length === 0) {
         const totalAmount = parseFloat(pr.total_amount) || 0;
-        if (totalAmount < 10000) {
+        if (totalAmount < 100000) {
           newStatus = 'For Purchase';
           notificationRecipients = await getSuperAdmins();
-          notificationTitle = 'PR Approved (< 10,000)';
+          notificationTitle = 'PR Approved (< 100,000)';
           notificationMessage = `Purchase Request ${pr.pr_number} has been approved by Super Admin Representative and is ready for PO creation`;
         } else {
           newStatus = 'For Super Admin Final Approval';
@@ -1620,7 +1620,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
     } else if (status === 'hold') {
       newStatus = 'On Hold';
     } else if (status === 'rejected') {
-      newStatus = 'For Super Admin Rep Review';
+      newStatus = 'For Senior Project Manager Review';
     } else {
       newStatus = 'Rejected';
     }
@@ -1728,7 +1728,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
     let conn;
     try {
       const userRole = req.user.role;
-      if (!['super_admin', 'super_admin_rep'].includes(userRole)) {
+      if (!['super_admin', 'ceo', 'senior_project_manager'].includes(userRole)) {
         return res.status(403).json({ message: 'Only Super Admin or Super Admin Representative can bypass PR approvals.' });
       }
 
@@ -1747,10 +1747,10 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
       const pr = prs[0];
       const totalAmount = parseFloat(pr.total_amount) || 0;
 
-      // Super admin rep can only bypass if amount < 10000
-      if (userRole === 'super_admin_rep' && totalAmount >= 10000) {
+      // Super admin rep can only bypass if amount < 100000
+      if (userRole === 'senior_project_manager' && totalAmount >= 100000) {
         await conn.rollback();
-        return res.status(403).json({ message: 'Super Admin Representative can only bypass PRs with a total amount less than 10,000.' });
+        return res.status(403).json({ message: 'Super Admin Representative can only bypass PRs with a total amount less than 100,000.' });
       }
 
       if (pr.status === 'For Purchase' || pr.status === 'Rejected') {
@@ -1769,7 +1769,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
       await createNotification(
         pr.requested_by,
         'PR Bypassed and Approved',
-        `Your Purchase Request ${pr.pr_number} has been bypassed and approved by ${req.user.first_name} ${req.user.last_name} (${userRole === 'super_admin' ? 'Super Admin' : 'Super Admin Rep'}). It is now ready for PO creation.`,
+        `Your Purchase Request ${pr.pr_number} has been bypassed and approved by ${req.user.first_name} ${req.user.last_name} (${['super_admin', 'ceo'].includes(userRole) ? 'Super Admin' : 'Super Admin Rep'}). It is now ready for PO creation.`,
         `/dashboard/purchase-requests/${pr.id}`
       );
 
@@ -1779,7 +1779,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
         pendingReviewers = await getEngineers();
       } else if (pr.status === 'For Admin Review') {
         pendingReviewers = await getAdmins();
-      } else if (pr.status === 'For Super Admin Rep Review') {
+      } else if (pr.status === 'For Senior Project Manager Review') {
         pendingReviewers = await getSuperAdminReps();
       } else if (pr.status === 'For Super Admin Final Approval') {
         pendingReviewers = await getSuperAdmins();
@@ -1812,7 +1812,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
   router.put('/:id/process', authenticate, async (req, res) => {
     let conn;
     try {
-      if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && req.user.role !== 'super_admin_rep') {
+      if (req.user.role !== 'admin' && !['super_admin', 'ceo'].includes(req.user.role) && req.user.role !== 'senior_project_manager') {
         return res.status(403).json({ message: 'Only an Admin can process item requests.' });
       }
 
@@ -1990,7 +1990,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
   });
 
 // Approve/Reject PR by Super Admin Rep (to Super Admin Final Approval)
-router.put('/:id/super_admin_rep-approve', authenticate, async (req, res) => {
+router.put('/:id/senior_project_manager-approve', authenticate, async (req, res) => {
   let conn;
   try {
     const {
@@ -2017,7 +2017,7 @@ router.put('/:id/super_admin_rep-approve', authenticate, async (req, res) => {
     const currentStatus = prs[0].status;
     await assertOrderNumberUnlocked(prs[0].order_number, 'approval');
 
-    if (currentStatus !== 'For Super Admin Rep Review') {
+    if (currentStatus !== 'For Senior Project Manager Review') {
       await conn.rollback();
       return res.status(400).json({ message: 'Purchase request not ready for Super Admin Rep approval' });
     }
@@ -2047,7 +2047,7 @@ router.put('/:id/super_admin_rep-approve', authenticate, async (req, res) => {
         [req.params.id]
       );
 
-      // Track changes made by super_admin_rep
+      // Track changes made by senior_project_manager
       const changes = [];
 
       // Update unit prices for items and calculate totals
@@ -2152,7 +2152,7 @@ router.put('/:id/super_admin_rep-approve', authenticate, async (req, res) => {
         );
       }
 
-      // Notify engineer about any changes made by super_admin_rep
+      // Notify engineer about any changes made by senior_project_manager
       if (req.changes && req.changes.length > 0) {
         const changesSummary = req.changes.map(c => `${c.item_name}: ${c.changes.join(', ')}`).join('; ');
         await createNotification(
@@ -2182,7 +2182,7 @@ router.put('/:id/super_admin_rep-approve', authenticate, async (req, res) => {
       pr_number: pr.pr_number,
       status: newStatus,
       type: 'status_update',
-      updated_by: 'super_admin_rep'
+      updated_by: 'senior_project_manager'
     });
 
     res.json({ message: `Purchase request ${status} successfully`, status: newStatus, total_amount: totalAmount });
@@ -2693,12 +2693,12 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       supplierAddress = supRows[0].address ?? null;
     }
 
-    // Update PR details and reset status to For Super Admin Rep Review, clear all pricing data
+    // Update PR details and reset status to For Senior Project Manager Review, clear all pricing data
     await conn.query(
       `UPDATE purchase_requests 
        SET purpose = ?, remarks = ?, date_needed = ?, project = ?, project_address = ?, order_number = ?, 
            payment_basis = ?, payment_terms_code = ?, payment_terms_note = ?, payment_terms_set_by = ?, payment_terms_set_at = ?, supplier_id = ?,
-           supplier_name = ?, status = 'For Super Admin Rep Review', approved_by = NULL, approved_at = NULL, 
+           supplier_name = ?, status = 'For Senior Project Manager Review', approved_by = NULL, approved_at = NULL, 
            supplier_address = ?, rejection_reason = NULL, 
            total_amount = ?, updated_at = NOW()
        WHERE id = ?`,
@@ -2766,7 +2766,7 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       console.error('Audit log error:', auditErr);
     }
 
-    res.json({ message: 'Purchase request resubmitted successfully', status: 'For Super Admin Rep Review' });
+    res.json({ message: 'Purchase request resubmitted successfully', status: 'For Senior Project Manager Review' });
   } catch (error) {
     if (conn) {
       try {
@@ -2808,11 +2808,11 @@ router.put('/:id/approve', authenticate, async (req, res) => {
       await conn.rollback();
       return res.status(403).json({ message: 'This PR is awaiting Admin review.' });
     }
-    if (currentStatus === 'For Super Admin Rep Review' && userRole !== 'super_admin_rep') {
+    if (currentStatus === 'For Senior Project Manager Review' && userRole !== 'senior_project_manager') {
       await conn.rollback();
       return res.status(403).json({ message: 'This PR is awaiting Super Admin Rep review.' });
     }
-    if (currentStatus === 'For Super Admin Final Approval' && userRole !== 'super_admin') {
+    if (currentStatus === 'For Super Admin Final Approval' && !['super_admin', 'ceo'].includes(userRole)) {
       await conn.rollback();
       return res.status(403).json({ message: 'This PR is awaiting Super Admin Final approval.' });
     }
@@ -2833,12 +2833,12 @@ router.put('/:id/approve', authenticate, async (req, res) => {
          
          if (reviewCountRes[0].count >= adminCountRes[0].count) {
            // All admins approved! Move to next stage based on amount
-           let nextStatus = 'For Super Admin Rep Review';
-           if (pr.total_amount >= 10000) {
+           let nextStatus = 'For Senior Project Manager Review';
+           if (pr.total_amount >= 100000) {
              nextStatus = 'For Super Admin Final Approval';
              // Delete pending super admin rep reviews since they are bypassed
              await conn.query(
-               "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'super_admin_rep') AND review_status = 'pending'",
+               "DELETE FROM purchase_request_reviews WHERE purchase_request_id = ? AND reviewer_id IN (SELECT id FROM employees WHERE role = 'senior_project_manager') AND review_status = 'pending'",
                [req.params.id]
              );
            }
@@ -2851,13 +2851,13 @@ router.put('/:id/approve', authenticate, async (req, res) => {
         } else {
           await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Under Admin Review', remarks || 'Approved for Admin Review', req.params.id]);
         }
-    } else if (userRole === 'super_admin_rep' && currentStatus === 'For Super Admin Rep Review') {
+    } else if (userRole === 'senior_project_manager' && currentStatus === 'For Senior Project Manager Review') {
        if (status === 'Rejected' || status === 'rejected') {
          await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Pending Admin Processing', remarks || 'Returned by Super Admin Rep', req.params.id]);
        } else {
          await conn.query('UPDATE purchase_requests SET status = ?, approved_by = ?, approved_at = NOW(), remarks = ? WHERE id = ?', ['Completed', req.user.id, remarks, req.params.id]);
        }
-    } else if (userRole === 'super_admin' && currentStatus === 'For Super Admin Final Approval') {
+    } else if (['super_admin', 'ceo'].includes(userRole) && currentStatus === 'For Super Admin Final Approval') {
        if (status === 'Rejected' || status === 'rejected') {
          await conn.query('UPDATE purchase_requests SET status = ?, remarks = ? WHERE id = ?', ['Pending Admin Processing', remarks || 'Returned by Super Admin', req.params.id]);
        } else {
@@ -2924,7 +2924,7 @@ router.put('/:id/status', authenticate, async (req, res) => {
     const currentStatus = prs[0].status;
     const userRole = req.user.role;
 
-    const isSuperAdminOverride = req.user.role === 'super_admin' && (status === 'On Hold' || status === 'Rejected');
+    const isSuperAdminOverride = ['super_admin', 'ceo'].includes(req.user.role) && (status === 'On Hold' || status === 'Rejected');
 
     if (!isSuperAdminOverride) {
       // Validate that user's role matches the current status
@@ -2936,11 +2936,11 @@ router.put('/:id/status', authenticate, async (req, res) => {
         return res.status(403).json({ message: 'This purchase request is currently awaiting Admin review. You do not have permission to update the status at this stage.' });
       }
 
-      if (currentStatus === 'For Super Admin Rep Review' && userRole !== 'super_admin_rep') {
+      if (currentStatus === 'For Senior Project Manager Review' && userRole !== 'senior_project_manager') {
         return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin Rep review. You do not have permission to update the status at this stage.' });
       }
 
-      if (currentStatus === 'For Super Admin Final Approval' && userRole !== 'super_admin') {
+      if (currentStatus === 'For Super Admin Final Approval' && !['super_admin', 'ceo'].includes(userRole)) {
         return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin final approval. You do not have permission to update the status at this stage.' });
       }
     }
@@ -2963,7 +2963,7 @@ router.put('/:id/status', authenticate, async (req, res) => {
 router.delete('/:id', authenticate, async (req, res) => {
   let conn;
   try {
-    const isSuperAdmin = req.user.role === 'super_admin';
+    const isSuperAdmin = ['super_admin', 'ceo'].includes(req.user.role);
     const [prs] = await db.query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
     
     if (prs.length === 0) {

@@ -14,7 +14,7 @@ const Layout = ({ user, notifications, setNotifications, onLogout, children }) =
   useEffect(() => {
     const fetchPendingCount = async () => {
       console.log('Checking user for pending count fetch:', user);
-      if (user?.role === 'super_admin') {
+      if (['super_admin', 'ceo'].includes(user?.role)) {
         try {
           console.log('Fetching pending count...');
           const data = await reimbursementService.getPendingCount();
@@ -36,7 +36,7 @@ const Layout = ({ user, notifications, setNotifications, onLogout, children }) =
 
   useEffect(() => {
     const handleReimbursementsChanged = async () => {
-      if (user?.role !== 'super_admin') return;
+      if (!['super_admin', 'ceo'].includes(user?.role)) return;
       try {
         const data = await reimbursementService.getPendingCount();
         setPendingCount(data.count);

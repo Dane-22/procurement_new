@@ -615,7 +615,7 @@ const ServiceRequestsManagement = () => {
   };
 
   const canCreate = ['engineer', 'admin'].includes(user?.role);
-  const canProcurementApprove = ['procurement', 'admin', 'super_admin'].includes(user?.role);
+  const canProcurementApprove = ['procurement', 'admin', 'ceo', 'super_admin'].includes(user?.role);
   const canSuperAdminApprove = ['super_admin'].includes(user?.role);
 
   return (
@@ -949,7 +949,7 @@ const ServiceRequestsManagement = () => {
                       <Send className="w-4 h-4" />
                     </Button>
                   )}
-                  {(((user?.role === 'engineer' || user?.role === 'admin') && sr.status === 'Draft' && sr.requested_by === user?.id) || user?.role === 'super_admin') && (
+                  {(((user?.role === 'engineer' || user?.role === 'admin') && sr.status === 'Draft' && sr.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role)) && (
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(sr)} title="Delete">
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </Button>

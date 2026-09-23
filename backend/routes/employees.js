@@ -15,7 +15,7 @@ router.post('/',
     body('first_name').notEmpty().withMessage('First name is required'),
     body('middle_initial').optional(),
     body('last_name').notEmpty().withMessage('Last name is required'),
-    body('role').isIn(['engineer', 'procurement', 'admin', 'super_admin_rep', 'super_admin']).withMessage('Invalid role'),
+    body('role').isIn(['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']).withMessage('Invalid role'),
     body('department').optional()
   ],
   async (req, res) => {
@@ -103,7 +103,7 @@ router.get('/by-role/:role',
   async (req, res) => {
     try {
       const { role } = req.params;
-      const validRoles = ['engineer', 'admin', 'super_admin_rep', 'super_admin'];
+      const validRoles = ['engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'];
       
       if (!validRoles.includes(role)) {
         return res.status(400).json({ message: 'Invalid role' });
@@ -129,7 +129,7 @@ router.put('/:id',
   [
     body('first_name').optional().notEmpty().withMessage('First name cannot be empty'),
     body('last_name').optional().notEmpty().withMessage('Last name cannot be empty'),
-    body('role').optional().isIn(['engineer', 'procurement', 'admin', 'super_admin_rep', 'super_admin']).withMessage('Invalid role'),
+    body('role').optional().isIn(['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']).withMessage('Invalid role'),
     body('is_active').optional().isBoolean().withMessage('is_active must be a boolean')
   ],
   async (req, res) => {

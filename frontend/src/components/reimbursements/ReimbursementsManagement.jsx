@@ -124,7 +124,7 @@ const ReimbursementsManagement = () => {
     }
   };
 
-  const canCreate = ['engineer', 'procurement', 'admin', 'super_admin'].includes(user?.role);
+  const canCreate = ['engineer', 'procurement', 'admin', 'ceo', 'super_admin'].includes(user?.role);
 
   const sanitizePaymentSchedules = (schedules = []) => {
     const seenDates = new Set();
@@ -461,7 +461,7 @@ const ReimbursementsManagement = () => {
                   )}
 
                   {/* Admin/Super Admin can approve when status is 'For Super Admin Final Approval' or other pending states */}
-                  {['admin', 'super_admin'].includes(user?.role) && (r.status === 'For Procurement Review' || r.status === 'For Super Admin Final Approval' || r.status === 'Pending') && (
+                  {['admin', 'ceo', 'super_admin'].includes(user?.role) && (r.status === 'For Procurement Review' || r.status === 'For Super Admin Final Approval' || r.status === 'Pending') && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => handleApprove(r, 'approved')} title="Approve">
                         <CheckCircle className="w-4 h-4 text-green-600" />
@@ -621,7 +621,7 @@ const ReimbursementsManagement = () => {
                       <Send className="w-4 h-4" />
                     </Button>
                   )}
-                  {((['engineer', 'procurement'].includes(user?.role) && r.status === 'Draft' && r.requested_by === user?.id) || user?.role === 'super_admin') && (
+                  {((['engineer', 'procurement'].includes(user?.role) && r.status === 'Draft' && r.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role)) && (
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(r)} title="Delete">
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </Button>
@@ -643,7 +643,7 @@ const ReimbursementsManagement = () => {
                       </Button>
                     </>
                   )}
-                  {['admin', 'super_admin'].includes(user?.role) && (r.status === 'For Procurement Review' || r.status === 'For Super Admin Final Approval' || r.status === 'Pending') && (
+                  {['admin', 'ceo', 'super_admin'].includes(user?.role) && (r.status === 'For Procurement Review' || r.status === 'For Super Admin Final Approval' || r.status === 'Pending') && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => handleApprove(r, 'approved')} title="Approve">
                         <CheckCircle className="w-4 h-4 text-green-600" />

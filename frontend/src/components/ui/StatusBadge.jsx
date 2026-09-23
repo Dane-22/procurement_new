@@ -9,7 +9,7 @@ const StatusBadge = ({ status }) => {
       'Approved': 'bg-green-100 text-green-800',
       'Rejected': 'bg-red-100 text-red-800',
       'Cancelled': 'bg-gray-100 text-gray-600',
-      'For Super Admin Rep Review': 'bg-orange-100 text-orange-800',
+      'For Senior Project Manager Review': 'bg-orange-100 text-orange-800',
       'For Super Admin Final Approval': 'bg-purple-100 text-purple-800',
       'PO Created': 'bg-indigo-100 text-indigo-800',
       'Paid': 'bg-green-100 text-green-800',

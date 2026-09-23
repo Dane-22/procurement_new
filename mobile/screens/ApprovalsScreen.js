@@ -10,7 +10,7 @@ import { addPendingRequest } from '../services/offlineSync';
 const REVIEW_STATUSES = new Set([
   'For Engineer Review',
   'For Admin Review',
-  'For Super Admin Rep Review'
+  'For Senior Project Manager Review'
 ]);
 
 export default function ApprovalsScreen() {

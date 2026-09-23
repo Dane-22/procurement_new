@@ -76,8 +76,8 @@ const Modal = ({ isOpen, onClose, title, children, className = '' }) => {
 
 const Suppliers = () => {
   const { user } = useAuth()
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
-  const isSuperAdmin = user?.role === 'super_admin'
+  const isAdmin = user?.role === 'admin' || ['super_admin', 'ceo'].includes(user?.role)
+  const isSuperAdmin = ['super_admin', 'ceo'].includes(user?.role)
 
   const [suppliers, setSuppliers] = useState([])
   const [loading, setLoading] = useState(true)

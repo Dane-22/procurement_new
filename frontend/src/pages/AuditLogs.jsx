@@ -54,7 +54,7 @@ const AuditLogs = () => {
       }
     };
     
-    if (user?.role === 'super_admin' || user?.role === 'Super Admin') {
+    if (['super_admin', 'ceo'].includes(user?.role) || user?.role === 'Super Admin') {
       fetchFilters();
     }
   }, [user]);
@@ -83,7 +83,7 @@ const AuditLogs = () => {
       }
     };
 
-    if (user?.role === 'super_admin' || user?.role === 'Super Admin') {
+    if (['super_admin', 'ceo'].includes(user?.role) || user?.role === 'Super Admin') {
       fetchLogs();
     } else {
       setLoading(false);

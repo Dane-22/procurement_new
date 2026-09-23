@@ -94,7 +94,7 @@ export const PRTable = ({
                             </Button>
                           </>
                         )}
-                        {user?.role === 'super_admin' && pr.status === 'For Super Admin Final Approval' && (
+                        {['super_admin', 'ceo'].includes(user?.role) && pr.status === 'For Super Admin Final Approval' && (
                           <>
                             <Button
                               variant="ghost"
@@ -170,7 +170,7 @@ export const PRTable = ({
                             <Edit className="w-4 h-4" />
                           </Button>
                         )}
-                        {((pr.status === 'Draft' || pr.status === 'Rejected' || pr.status === 'Returned') && pr.requested_by === user?.id) || user?.role === 'super_admin' ? (
+                        {((pr.status === 'Draft' || pr.status === 'Rejected' || pr.status === 'Returned') && pr.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role) ? (
                           <Button 
                             variant="ghost" 
                             size="sm" 
@@ -183,7 +183,7 @@ export const PRTable = ({
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </Button>
                         ) : null}
-                        {urlTab === 'reviews' && (pr.status === 'For Engineer Review' || pr.status === 'For Admin Review' || pr.status === 'For Super Admin Rep Review' || pr.status === 'For Super Admin Final Approval') && (
+                        {urlTab === 'reviews' && (pr.status === 'For Engineer Review' || pr.status === 'For Admin Review' || pr.status === 'For Senior Project Manager Review' || pr.status === 'For Super Admin Final Approval') && (
                           <>
                             <Button
                               variant="ghost"
@@ -199,7 +199,7 @@ export const PRTable = ({
                             </Button>
                           </>
                         )}
-                        {urlTab === 'admin_processing' && pr.status === 'For Admin Processing' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+                        {urlTab === 'admin_processing' && pr.status === 'For Admin Processing' && (user?.role === 'admin' || ['super_admin', 'ceo'].includes(user?.role)) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -365,7 +365,7 @@ export const PRTable = ({
                         </Button>
                       </>
                     )}
-                    {user?.role === 'super_admin' && pr.status === 'For Super Admin Final Approval' && (
+                    {['super_admin', 'ceo'].includes(user?.role) && pr.status === 'For Super Admin Final Approval' && (
                       <>
                         <Button
                           variant="ghost"
@@ -411,7 +411,7 @@ export const PRTable = ({
                     >
                       <FileSpreadsheet className="w-4 h-4" />
                     </Button>
-                    {urlTab === 'reviews' && (pr.status === 'For Engineer Review' || pr.status === 'For Admin Review' || pr.status === 'For Super Admin Rep Review' || pr.status === 'For Super Admin Final Approval') && (
+                    {urlTab === 'reviews' && (pr.status === 'For Engineer Review' || pr.status === 'For Admin Review' || pr.status === 'For Senior Project Manager Review' || pr.status === 'For Super Admin Final Approval') && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -437,7 +437,7 @@ export const PRTable = ({
                         <Edit className="w-4 h-4" />
                       </Button>
                     )}
-                    {((pr.status === 'Draft' || pr.status === 'Rejected' || pr.status === 'Returned') && pr.requested_by === user?.id) || user?.role === 'super_admin' ? (
+                    {((pr.status === 'Draft' || pr.status === 'Rejected' || pr.status === 'Returned') && pr.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role) ? (
                       <Button 
                         variant="ghost" 
                         size="sm" 

@@ -170,9 +170,9 @@
       ▼                 ▼
 ┌─────────────┐   ┌─────────────────────────┐
 │ Check Amount│   │ PR sent back to the     │
-│ < 10,000 -> │   │ Engineer who created it │
+│ < 100,000 -> │   │ Engineer who created it │
 │ FOR PURCHASE│   │ to EDIT the PR          │
-│ >= 10,000 ->│   │ (Notifies requester)    │
+│ >= 100,000 ->│   │ (Notifies requester)    │
 │ Proceed to  │   │ Status: RETURNED        │
 │ Step 5      │   └─────────────────────────┘
                             │
@@ -282,7 +282,7 @@
 ┌───────────────────────────┐
 │ Super Admin (Any Amount)  │
 │           OR              │
-│ Super Admin Rep (<10,000) │
+│ Super Admin Rep (<100,000) │
 └────────┬──────────────────┘
          │
          │ Clicks "Bypass Approvals"

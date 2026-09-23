@@ -102,9 +102,11 @@ export default function DashboardScreen({ navigation }) {
   }
 
   const role = user?.role || 'Unknown';
-  const isEngineer = role === 'Engineer';
-  const isAdmin = role === 'Admin';
-  const isSuperAdmin = role === 'Super Admin' || role === 'Super Admin Rep';
+  const roleLower = role.toLowerCase();
+  const isEngineer = roleLower === 'engineer';
+  const isAdmin = roleLower === 'admin';
+  const isSuperAdmin = ['super admin', 'super_admin', 'senior project manager', 'senior_project_manager', 'ceo'].includes(roleLower);
+  const canCreateRequest = ['engineer', 'senior project manager', 'senior_project_manager', 'ceo', 'super admin', 'super_admin'].includes(roleLower);
 
   const getStatusStyle = (status) => {
     switch (status?.toUpperCase()) {
@@ -223,7 +225,7 @@ export default function DashboardScreen({ navigation }) {
 
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionsGrid}>
-          {isEngineer && (
+          {canCreateRequest && (
             <TouchableOpacity 
               style={styles.actionCard} 
               onPress={() => navigation.navigate('New Request')}

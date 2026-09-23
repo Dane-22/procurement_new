@@ -95,7 +95,7 @@ const getReviewerRoleLabel = (role) => {
     admin: 'Admin',
     procurement: 'Procurement',
     super_admin: 'Super Admin',
-    super_admin_rep: 'Super Admin Rep'
+    senior_project_manager: 'Senior Project Manager'
   };
   return labels[role] || 'Reviewer';
 };
@@ -113,8 +113,8 @@ const getCurrentReviewStage = (status, requesterRole) => {
     'For Engineer Review': { role: 'engineer', label: 'Engineer review' },
     'For Admin Review': { role: 'admin', label: 'Admin review' },
     'For Procurement Review': { role: 'procurement', label: 'Procurement review' },
-    'For Super Admin Rep Review': { role: 'super_admin_rep', label: 'Super Admin Rep review' },
-    'For Super Admin Final Approval': { role: 'super_admin', label: 'Super Admin review' }
+    'For Senior Project Manager Review': { role: 'senior_project_manager', label: 'Senior Project Manager review' },
+    'For Super Admin Final Approval': { role: ['super_admin', 'ceo'], label: 'Super Admin review' }
   };
 
   if (stages[status]) return stages[status];
@@ -166,7 +166,7 @@ const PRDetailsModal = ({
   const currentReviewStage = getCurrentReviewStage(pr.status, pr.requester_role);
   const stageReviewers = currentReviewStage.role
     ? reviewRecords.filter(review => review.reviewer_role === currentReviewStage.role)
-    : reviewRecords.filter(review => review.reviewer_role !== 'super_admin');
+    : reviewRecords.filter(review => !['super_admin', 'ceo'].includes(review.reviewer_role));
   const stageApprovedReviewers = stageReviewers.filter(review => review.review_status === 'approved');
   const pendingReviewers = stageReviewers.filter(review =>
     review.review_status !== 'approved' &&
@@ -512,7 +512,7 @@ const PRDetailsModal = ({
             </Button>
 
             {/* Render bypass button for authorized users */}
-            {user && (user.role === 'super_admin' || (user.role === 'super_admin_rep' && total < 10000)) && pr.status !== 'For Purchase' && pr.status !== 'Rejected' && !readOnly && (
+            {user && (['super_admin', 'ceo'].includes(user.role) || (user.role === 'senior_project_manager' && total < 10000)) && pr.status !== 'For Purchase' && pr.status !== 'Rejected' && !readOnly && (
               <Button
                 variant="primary"
                 className="w-full sm:w-auto"
@@ -524,11 +524,11 @@ const PRDetailsModal = ({
             )}
 
             {/* Render hold button if provided and action allowed, or if super admin */}
-            {( (onHold && (canAct || user?.role === 'super_admin')) || (userPendingReview && onHold) ) && pr.status !== 'On Hold' && (
+            {( (onHold && (canAct || ['super_admin', 'ceo'].includes(user?.role))) || (userPendingReview && onHold) ) && pr.status !== 'On Hold' && (
               <Button
                 variant="secondary"
                 className="w-full sm:w-auto"
-                onClick={onHold && (canAct || user?.role === 'super_admin') ? handleHold : () => {}}
+                onClick={onHold && (canAct || ['super_admin', 'ceo'].includes(user?.role)) ? handleHold : () => {}}
                 disabled={processingId === pr.id || submittingReview}
               >
                 On Hold
@@ -536,11 +536,11 @@ const PRDetailsModal = ({
             )}
 
             {/* Render reject button if parent provided handler and action allowed, or if current user is a pending reviewer, or if super admin */}
-            {( (onReject && (canAct || user?.role === 'super_admin')) || userPendingReview ) && pr.status !== 'Rejected' && (
+            {( (onReject && (canAct || ['super_admin', 'ceo'].includes(user?.role))) || userPendingReview ) && pr.status !== 'Rejected' && (
               <Button
                 variant="danger"
                 className="w-full sm:w-auto"
-                onClick={onReject && (canAct || user?.role === 'super_admin') ? handleReject : handleLocalReject}
+                onClick={onReject && (canAct || ['super_admin', 'ceo'].includes(user?.role)) ? handleReject : handleLocalReject}
                 disabled={processingId === pr.id || submittingReview}
               >
                 <XCircle className="mr-2 h-4 w-4" />

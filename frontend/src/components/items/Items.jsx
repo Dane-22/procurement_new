@@ -579,6 +579,23 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
     }
   }
 
+  const handleDeleteItem = async (item) => {
+    if (!['super_admin', 'ceo', 'senior_project_manager'].includes(user?.role)) {
+      alert('You do not have permission to delete items.');
+      return;
+    }
+    
+    if (window.confirm(`Are you sure you want to delete ${item.item_name}? This action cannot be undone.`)) {
+      try {
+        await itemService.deleteItem(item.id);
+        fetchItems();
+      } catch (err) {
+        console.error('Failed to delete item:', err);
+        alert('Failed to delete item: ' + (err.response?.data?.message || err.message));
+      }
+    }
+  }
+
   const closeCategoryModal = () => {
     setShowCategoryModal(false)
     setCategoryForm({ name: '', description: '' })
@@ -879,7 +896,7 @@ setPaymentBasis('debt')
 
   const groupedItems = groupItemsByName(items)
 
-  const canManageCatalog = user?.role === 'super_admin'
+  const canManageCatalog = ['super_admin', 'ceo'].includes(user?.role)
 
   // Get categories from database + add 'all' option
   const filterCategories = [
@@ -964,11 +981,9 @@ setPaymentBasis('debt')
               <span className="text-sm text-gray-500">Total</span>
               <span className="text-lg font-semibold text-gray-900">{formatCurrency(calculateCartTotal())}</span>
             </div>
-            {user?.role !== 'super_admin' && (
-              <Button onClick={openPRModal} className="w-full">
-                Create Purchase Request
-              </Button>
-            )}
+            <Button onClick={openPRModal} className="w-full">
+              Create Purchase Request
+            </Button>
           </div>
         </>
       )}
@@ -1115,6 +1130,15 @@ setPaymentBasis('debt')
                               <Pencil className="h-4 w-4" />
                             </button>
                           )}
+                          {['super_admin', 'ceo', 'senior_project_manager'].includes(user?.role) && (
+                            <button
+                              onClick={() => handleDeleteItem(item)}
+                              className="ml-2 rounded-md border border-gray-200 p-2 text-red-600 hover:bg-red-50"
+                              aria-label="Delete item"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
 
                         {group.items.length > 1 && (
@@ -1247,6 +1271,17 @@ setPaymentBasis('debt')
                         >
                           <Pencil className="w-4 h-4 mr-1" />
                           Edit
+                        </Button>
+                      )}
+                      {['super_admin', 'ceo', 'senior_project_manager'].includes(user?.role) && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleDeleteItem(item)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
                         </Button>
                       )}
                       {inCart ? (

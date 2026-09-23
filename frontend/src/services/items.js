@@ -14,6 +14,11 @@ export const itemService = {
     };
   },
 
+  deleteItem: async (id) => {
+    const response = await api.delete(`/items/${id}`);
+    return response.data;
+  },
+
   getAll: async () => {
     const pageSize = 100;
     const all = [];

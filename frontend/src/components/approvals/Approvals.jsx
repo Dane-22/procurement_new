@@ -138,7 +138,7 @@ const LockedBadge = () => (
 const REVIEW_STATUSES = new Set([
   'For Engineer Review',
   'For Admin Review',
-  'For Super Admin Rep Review',
+  'For Senior Project Manager Review',
   'For Admin Review'
 ]);
 
@@ -148,7 +148,7 @@ const canApproveByStatus = (status, userRole) => {
   const role = normalizeRole(userRole);
   if (status === 'For Engineer Review') return role === 'engineer';
   if (status === 'For Admin Review') return role === 'admin';
-  if (status === 'For Super Admin Rep Review') return role === 'super_admin_rep';
+  if (status === 'For Senior Project Manager Review') return role === 'senior_project_manager';
   if (status === 'For Admin Review') return role === 'admin';
   if (status === 'For Super Admin Final Approval') return role === 'super_admin';
   return true;
@@ -347,7 +347,7 @@ const Approvals = () => {
     pr.status === 'For Super Admin Final Approval' ||
     pr.status === 'For Engineer Review' ||
     pr.status === 'For Admin Review' ||
-    pr.status === 'For Super Admin Rep Review'
+    pr.status === 'For Senior Project Manager Review'
   );
 
   const onHoldPRs = purchaseRequests.filter(pr => 
@@ -1651,7 +1651,7 @@ const Approvals = () => {
                             >
                               <XCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -1728,7 +1728,7 @@ const Approvals = () => {
                             >
                               <CheckCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -1797,7 +1797,7 @@ const Approvals = () => {
                         <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -2231,7 +2231,7 @@ const Approvals = () => {
                           >
                             <CheckCircle className="w-4 h-4" />
                           </Button>
-                          {user?.role === 'super_admin' && (
+                          {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -2313,7 +2313,7 @@ const Approvals = () => {
                       <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          {user?.role === 'super_admin' && (
+                          {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -2487,7 +2487,7 @@ const Approvals = () => {
                 <InfoRow label="Project" value={pr.project || '-'} />
                 <InfoRow label="Amount" value={formatCurrency(pr.amount)} />
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  {user?.role === 'super_admin' && (
+                  {['super_admin', 'ceo'].includes(user?.role) && (
                         <Button
                           variant="danger"
                           size="sm"
@@ -2880,7 +2880,7 @@ const Approvals = () => {
                             >
                               <XCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -2963,7 +2963,7 @@ const Approvals = () => {
                             >
                               <CheckCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -3038,7 +3038,7 @@ const Approvals = () => {
                         <td className="py-3 px-4">{renderStatusWithLock(sr)}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -3243,7 +3243,7 @@ const Approvals = () => {
                             >
                               <XCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -3332,7 +3332,7 @@ const Approvals = () => {
                             >
                               <CheckCircle className="w-4 h-4" />
                             </Button>
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"
@@ -3413,7 +3413,7 @@ const Approvals = () => {
                         <td className="py-3 px-4">{renderStatusWithLock(cr)}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
-                            {user?.role === 'super_admin' && (
+                            {['super_admin', 'ceo'].includes(user?.role) && (
                               <Button
                                 variant="danger"
                                 size="sm"

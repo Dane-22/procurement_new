@@ -822,7 +822,7 @@ const CashRequests = () => {
                             </Button>
                           </>
                         )}
-                        {((cr.status === 'Draft' || cr.status === 'Rejected' || cr.status === 'Returned') && cr.requested_by === user?.id) || user?.role === 'super_admin' ? (
+                        {((cr.status === 'Draft' || cr.status === 'Rejected' || cr.status === 'Returned') && cr.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role) ? (
                           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete(cr.id); }} title="Delete">
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </Button>
@@ -979,7 +979,7 @@ const CashRequests = () => {
                         </Button>
                       </>
                     )}
-                    {((cr.status === 'Draft' || cr.status === 'Rejected' || cr.status === 'Returned') && cr.requested_by === user?.id) || user?.role === 'super_admin' ? (
+                    {((cr.status === 'Draft' || cr.status === 'Rejected' || cr.status === 'Returned') && cr.requested_by === user?.id) || ['super_admin', 'ceo'].includes(user?.role) ? (
                       <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete(cr.id); }} title="Delete">
                         <Trash2 className="w-4 h-4 text-red-500" />
                       </Button>

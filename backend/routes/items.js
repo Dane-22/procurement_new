@@ -148,7 +148,7 @@ router.get('/', authenticate, async (req, res) => {
     const search = String(req.query.search || '').trim();
     const category = String(req.query.category || '').trim();
 
-    const whereClauses = ["i.status = 'Active'"];
+    const whereClauses = ["i.status = 'Active'", "i.is_active = 1"];
     const whereParams = [];
 
     if (search) {
@@ -224,7 +224,7 @@ router.get('/:id', authenticate, async (req, res) => {
       SELECT i.*, c.category_name
       FROM items i
       LEFT JOIN categories c ON i.category_id = c.id
-      WHERE i.id = ? AND i.status = 'Active'
+      WHERE i.id = ? AND i.status = 'Active' AND i.is_active = 1
     `, [req.params.id]);
 
     if (items.length === 0) {
@@ -235,6 +235,27 @@ router.get('/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Fetch item error:', error);
     res.status(500).json({ message: 'Failed to fetch item: ' + error.message });
+  }
+});
+
+// Delete item (soft delete)
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const isSuperAdminOrCEO = ['super_admin', 'ceo', 'senior_project_manager'].includes(req.user.role);
+    if (!isSuperAdminOrCEO) {
+      return res.status(403).json({ message: 'Forbidden: You do not have permission to delete items.' });
+    }
+
+    const [result] = await db.query('UPDATE items SET is_active = 0 WHERE id = ?', [req.params.id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    res.json({ message: 'Item successfully deleted' });
+  } catch (error) {
+    console.error('Delete item error:', error);
+    res.status(500).json({ message: 'Failed to delete item: ' + error.message });
   }
 });
 
