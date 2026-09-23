@@ -617,19 +617,8 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
 
     const prNumber = `${year}-${month}-${String(counter).padStart(3, '0')}`;
 
-    // Determine status based on requester role
+    // Determine status based on requester role (moved after totalAmount is calculated)
     let status;
-    if (isDraft) {
-      status = 'Draft';
-    } else if (isItemRequest) {
-      status = 'For Admin Processing';
-    } else if (req.user.role === 'engineer') {
-      status = 'For Engineer Review';
-    } else if (req.user.role === 'admin') {
-      status = 'For Admin Review';
-    } else {
-      status = 'For Super Admin Final Approval';
-    }
 
     const paymentBasis = payment_basis === 'non_debt' ? 'non_debt' : 'debt';
     const paymentTermsNote = normalizePaymentTermsNote(payment_terms_note);
@@ -733,6 +722,18 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
     const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
     const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
+
+    if (isDraft) {
+      status = 'Draft';
+    } else if (isItemRequest) {
+      status = 'For Admin Processing';
+    } else if (req.user.role === 'admin') {
+      status = 'For Admin Review';
+    } else {
+      // By default, everyone else (engineer, senior_project_manager, ceo, super_admin, etc.) 
+      // starts at Engineer Review so it goes through the full chain.
+      status = 'For Engineer Review';
+    }
     assertPaymentScheduleTotalsMatch({
       paymentBasis,
       schedules: normalizedPaymentSchedules,
@@ -767,8 +768,8 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
     // 200-218
     const [result] = await conn.query(
       `INSERT INTO purchase_requests
-      (pr_number, requested_by, purpose, remarks, status, date_needed, project, project_address, order_number, payment_basis, payment_terms_code, payment_terms_note, payment_terms_set_by, payment_terms_set_at, supplier_id, supplier_name, supplier_address, total_amount, accreditation_files, supplier_accredited)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (pr_number, requested_by, purpose, remarks, status, date_needed, project, project_address, order_number, payment_basis, payment_terms_code, payment_terms_note, payment_terms_set_by, payment_terms_set_at, supplier_id, supplier_name, supplier_address, total_amount, accreditation_files, supplier_accredited, approved_by, approved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         prNumber,
         req.user.id,
@@ -789,7 +790,9 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
         supplierAddress,
         totalAmount,
         accreditationFilesJson,
-        supplierAccredited
+        supplierAccredited,
+        status === 'Completed' ? req.user.id : null,
+        status === 'Completed' ? new Date() : null
       ]
     );
 

@@ -140,6 +140,22 @@ export async function getSuperAdminReps() {
 }
 
 /**
+ * Get ceos who should be notified
+ * @returns {Promise<number[]>} - Array of user IDs with ceo role
+ */
+export async function getCeos() {
+  try {
+    const [users] = await db.query(`
+      SELECT id FROM employees WHERE role = 'ceo' AND is_active = 1
+    `);
+    return users.map(u => u.id);
+  } catch (error) {
+    console.error('Failed to get ceos:', error);
+    return [];
+  }
+}
+
+/**
  * Get reviewers for a PR based on requester role
  * @param {string} requesterRole - The role of the person who created the PR
  * @returns {Promise<number[]>} - Array of user IDs who should review the PR
@@ -148,27 +164,22 @@ export async function getReviewersForPR(requesterRole) {
   try {
     let reviewers = [];
     
-    if (requesterRole === 'engineer') {
-      // If requester is Engineer: reviewers are all Engineers + Admins + Super Admin Rep + Super Admin
+    if (requesterRole === 'admin') {
+      // If requester is Admin: reviewers are all Admins + Super Admin Rep + Super Admin + Ceos
+      const admins = await getAdmins();
+      const superAdminReps = await getSuperAdminReps();
+      const superAdmins = await getSuperAdmins();
+      const ceos = await getCeos();
+      reviewers = [...admins, ...superAdminReps, ...superAdmins, ...ceos];
+    } else {
+      // Everyone else (Engineer, Senior Project Manager, CEO, Super Admin)
+      // starts at Engineer Review and goes through the full chain.
       const engineers = await getEngineers();
       const admins = await getAdmins();
       const superAdminReps = await getSuperAdminReps();
       const superAdmins = await getSuperAdmins();
-      reviewers = [...engineers, ...admins, ...superAdminReps, ...superAdmins];
-    } else if (requesterRole === 'admin') {
-      // If requester is Admin: reviewers are all Admins + Super Admin Rep + Super Admin
-      const admins = await getAdmins();
-      const superAdminReps = await getSuperAdminReps();
-      const superAdmins = await getSuperAdmins();
-      reviewers = [...admins, ...superAdminReps, ...superAdmins];
-    } else if (requesterRole === 'senior_project_manager') {
-      // If requester is Super Admin Rep: reviewers are Super Admin Rep + Super Admin
-      const superAdminReps = await getSuperAdminReps();
-      const superAdmins = await getSuperAdmins();
-      reviewers = [...superAdminReps, ...superAdmins];
-    } else {
-      // Super Admin doesn't need review
-      reviewers = [];
+      const ceos = await getCeos();
+      reviewers = [...engineers, ...admins, ...superAdminReps, ...superAdmins, ...ceos];
     }
     
     // Remove duplicates and filter out the requester themselves
