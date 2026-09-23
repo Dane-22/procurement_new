@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { itemService } from '../../services/items'
 import { useNavigate } from 'react-router-dom'
-import { Package, ArrowLeft } from 'lucide-react'
+import { Package, ArrowLeft, Search, X } from 'lucide-react'
 
 const Card = ({ children, className = '' }) => (
   <div className={`bg-white rounded-lg shadow-sm border border-gray-200 ${className}`}>
@@ -87,6 +87,10 @@ const TextArea = ({ label, value, onChange, placeholder, rows = 3 }) => (
 const AddItem = () => {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
+  const [scraping, setScraping] = useState(false)
+  const [showVariantModal, setShowVariantModal] = useState(false)
+  const [scrapedVariants, setScrapedVariants] = useState([])
+  const [selectedVariants, setSelectedVariants] = useState(new Set())
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
   const [formData, setFormData] = useState({
@@ -141,14 +145,7 @@ const AddItem = () => {
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    
-    if (!formData.item_code || !formData.item_name) {
-      alert('SKU and Item Name are required')
-      return
-    }
-
+  const proceedWithSave = async () => {
     try {
       setLoading(true)
 
@@ -188,8 +185,103 @@ const AddItem = () => {
     }
   }
 
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!formData.item_code || !formData.item_name) {
+      alert('SKU and Item Name are required')
+      return
+    }
+
+    // Automatically trigger scraping when the user tries to save
+    try {
+      setLoading(true)
+      const variants = await itemService.scrapeVariants({
+        item_name: formData.item_name,
+        category: formData.category,
+        description: formData.description,
+        unit: formData.unit
+      })
+      
+      if (variants && variants.length > 0) {
+        setScrapedVariants(variants)
+        // Select all by default for better UX
+        setSelectedVariants(new Set(variants.map((_, i) => i)))
+        setShowVariantModal(true)
+        setLoading(false)
+        return // Stop here and wait for modal interaction
+      }
+    } catch (err) {
+      console.error('Failed to auto-scrape variants, falling back to standard save:', err)
+      // If scraping fails, we just proceed with saving the base item
+    }
+
+    // If no variants were found or scraping errored, proceed with normal save
+    await proceedWithSave()
+  }
+
   const handleCancel = () => {
     navigate('/items')
+  }
+
+  const handleAutoFind = async () => {
+    if (!formData.item_name || !formData.category) {
+      alert('Please enter Item Name and Category first to find variants.')
+      return
+    }
+
+    try {
+      setScraping(true)
+      const variants = await itemService.scrapeVariants({
+        item_name: formData.item_name,
+        category: formData.category,
+        description: formData.description,
+        unit: formData.unit
+      })
+      
+      if (variants && variants.length > 0) {
+        setScrapedVariants(variants)
+        setSelectedVariants(new Set())
+        setShowVariantModal(true)
+      } else {
+        alert('No variants found online.')
+      }
+    } catch (err) {
+      console.error('Failed to scrape variants:', err)
+      alert('Failed to find variants online: ' + (err.response?.data?.message || err.message))
+    } finally {
+      setScraping(false)
+    }
+  }
+
+  const toggleVariantSelection = (index) => {
+    const newSelection = new Set(selectedVariants)
+    if (newSelection.has(index)) {
+      newSelection.delete(index)
+    } else {
+      newSelection.add(index)
+    }
+    setSelectedVariants(newSelection)
+  }
+
+  const handleSaveVariants = async () => {
+    if (selectedVariants.size === 0) return
+    
+    try {
+      setLoading(true)
+      const variantsToSave = Array.from(selectedVariants).map(index => scrapedVariants[index])
+      
+      await itemService.bulkCreate(variantsToSave)
+      
+      alert(`Successfully added ${variantsToSave.length} variants!`)
+      setShowVariantModal(false)
+      navigate('/items')
+    } catch (err) {
+      console.error('Failed to save variants:', err)
+      alert('Failed to save some variants: ' + (err.response?.data?.message || err.message))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -284,16 +376,87 @@ const AddItem = () => {
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t mt-4">
-            <Button type="button" variant="secondary" onClick={handleCancel} disabled={loading}>
-              Cancel
+          <div className="flex justify-between items-center pt-4 border-t mt-4">
+            <Button type="button" variant="outline" onClick={handleAutoFind} disabled={loading || scraping}>
+              {scraping ? 'Searching...' : <><Search className="w-4 h-4 mr-2 inline" /> Auto-Find Variants</>}
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Creating...' : 'Create Item'}
-            </Button>
+            <div className="flex gap-3">
+              <Button type="button" variant="secondary" onClick={handleCancel} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Creating...' : 'Create Item'}
+              </Button>
+            </div>
           </div>
         </form>
       </Card>
+
+      {/* Variant Selection Modal */}
+      {showVariantModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold">Select Variants to Add</h3>
+              <button onClick={() => setShowVariantModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <input 
+                        type="checkbox" 
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedVariants(new Set(scrapedVariants.map((_, i) => i)))
+                          } else {
+                            setSelectedVariants(new Set())
+                          }
+                        }}
+                        checked={selectedVariants.size === scrapedVariants.length && scrapedVariants.length > 0}
+                      />
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {scrapedVariants.map((variant, index) => (
+                    <tr key={index} className={selectedVariants.has(index) ? 'bg-yellow-50' : ''}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedVariants.has(index)}
+                          onChange={() => toggleVariantSelection(index)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{variant.item_code}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{variant.item_name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{variant.unit}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{variant.unit_price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+              <Button variant="secondary" onClick={() => setShowVariantModal(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveVariants} disabled={loading || selectedVariants.size === 0}>
+                {loading ? 'Saving...' : `Save ${selectedVariants.size} Selected Variants`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

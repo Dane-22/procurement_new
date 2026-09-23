@@ -150,6 +150,7 @@ const Items = () => {
   const [pageSize] = useState(20)
   const [totalItems, setTotalItems] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [selectedVariants, setSelectedVariants] = useState({})
 
   const [branches, setBranches] = useState([])
   const [loadingBranches, setLoadingBranches] = useState(false)
@@ -507,8 +508,7 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
 
     try {
       setAddingItem(true)
-      const dataToSubmit = {
-        item_name: newItemForm.item_name,
+      const baseData = {
         description: newItemForm.description,
         category_id: parseInt(newItemForm.category_id, 10),
         unit: newItemForm.unit,
@@ -516,14 +516,31 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
         product_type: newItemForm.product_type || null,
         material: newItemForm.material || null,
         color: newItemForm.color || null,
-        size: newItemForm.size || null
       }
-      await itemService.create(dataToSubmit)
+
+      if (newItemForm.sizes && newItemForm.sizes.trim()) {
+        const sizesList = newItemForm.sizes.split(',').map(s => s.trim()).filter(Boolean)
+        const itemsToCreate = sizesList.map(size => ({
+          ...baseData,
+          item_name: `${newItemForm.item_name} ${size}`,
+          size: size
+        }))
+
+        await itemService.bulkCreate(itemsToCreate)
+      } else {
+        const dataToSubmit = {
+          ...baseData,
+          item_name: newItemForm.item_name,
+          size: newItemForm.size || null
+        }
+        await itemService.create(dataToSubmit)
+      }
+
       closeAddItemModal()
       fetchItems()
     } catch (err) {
-      console.error('Failed to create item:', err)
-      alert('Failed to create item: ' + (err.response?.data?.message || err.message))
+      console.error('Failed to create item(s):', err)
+      alert('Failed to create item(s): ' + (err.response?.data?.message || err.message))
     } finally {
       setAddingItem(false)
     }
@@ -823,6 +840,45 @@ setPaymentBasis('debt')
     }
   }
 
+  const groupItemsByName = (itemList) => {
+    const groups = {}
+    itemList.forEach(item => {
+      let baseName = item.item_name
+      let size = 'Default'
+
+      const startMatchX = item.item_name.match(/^([\d\s./"'\-]+[xX][\d\s./"'\-xX]+)\s+(.*)$/i)
+      const startMatchUnit = item.item_name.match(/^([\d./\-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|"|'|d))\s+(.*)$/i)
+      const endMatch = item.item_name.match(/^(.*?)\s+([\d./\-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|pcs|set|"|'|d|x\d+)?|[SML]|XL|XXL)$/i)
+
+      if (startMatchX) {
+        size = startMatchX[1].trim()
+        baseName = startMatchX[2].trim()
+      } else if (startMatchUnit) {
+        size = startMatchUnit[1].trim()
+        baseName = startMatchUnit[2].trim()
+      } else if (endMatch) {
+        baseName = endMatch[1].trim()
+        size = endMatch[2].trim()
+      }
+
+      if (!groups[baseName]) {
+        groups[baseName] = {
+          baseName,
+          category_name: item.category_name || item.category,
+          items: []
+        }
+      }
+      groups[baseName].items.push({ ...item, sizeLabel: size })
+    })
+
+    return Object.values(groups).map(group => {
+      group.items.sort((a, b) => a.sizeLabel.localeCompare(b.sizeLabel))
+      return group
+    })
+  }
+
+  const groupedItems = groupItemsByName(items)
+
   const canManageCatalog = user?.role === 'super_admin'
 
   // Get categories from database + add 'all' option
@@ -1029,10 +1085,12 @@ setPaymentBasis('debt')
             )}
             {/* Mobile list */}
             <div className="space-y-3 p-3 sm:hidden">
-              {items.map(item => {
+              {groupedItems.map(group => {
+                const selectedItemId = selectedVariants[group.baseName] || group.items[0].id;
+                const item = group.items.find(i => i.id === selectedItemId) || group.items[0];
                 const inCart = cart.find(c => c.item_id === item.id)
                 return (
-                  <div key={item.id} className="rounded-xl border border-gray-200 p-4 shadow-sm">
+                  <div key={group.baseName} className="rounded-xl border border-gray-200 p-4 shadow-sm">
                     <div className="flex items-start gap-3">
                       <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100">
                         <Package className="h-5 w-5 text-gray-400" />
@@ -1042,10 +1100,10 @@ setPaymentBasis('debt')
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-semibold leading-snug text-gray-900 break-words">
-                              {item.item_name}
+                              {group.baseName}
                             </p>
                             <p className="mt-1 text-xs text-gray-500 break-words">
-                              ITEM CODE: {item.item_code} â€¢ {item.unit || 'pcs'}
+                              ITEM CODE: {item.item_code} • {item.unit || 'pcs'}
                             </p>
                           </div>
                           {canManageCatalog && (
@@ -1058,6 +1116,20 @@ setPaymentBasis('debt')
                             </button>
                           )}
                         </div>
+
+                        {group.items.length > 1 && (
+                          <div className="mt-2">
+                            <select
+                              value={selectedItemId}
+                              onChange={(e) => setSelectedVariants(prev => ({ ...prev, [group.baseName]: parseInt(e.target.value) }))}
+                              className="text-sm border border-gray-300 rounded-md p-1 focus:ring-yellow-500 w-full"
+                            >
+                              {group.items.map(v => (
+                                <option key={v.id} value={v.id}>{v.sizeLabel}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
 
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {getItemCategoryName(item) && (
@@ -1125,10 +1197,12 @@ setPaymentBasis('debt')
 
             {/* Desktop/tablet list */}
             <div className="hidden sm:block divide-y divide-gray-200">
-              {items.map(item => {
+              {groupedItems.map(group => {
+                const selectedItemId = selectedVariants[group.baseName] || group.items[0].id;
+                const item = group.items.find(i => i.id === selectedItemId) || group.items[0];
                 const inCart = cart.find(c => c.item_id === item.id)
                 return (
-                  <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-gray-50">
+                  <div key={group.baseName} className="p-4 flex items-center gap-4 hover:bg-gray-50">
                     {/* Icon */}
                     <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
                       <Package className="w-6 h-6 text-gray-400" />
@@ -1137,11 +1211,22 @@ setPaymentBasis('debt')
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900">{item.item_name}</p>
+                        <p className="font-medium text-gray-900">{group.baseName}</p>
                         {getItemCategoryName(item) && (
                           <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
                             {getItemCategoryName(item)}
                           </span>
+                        )}
+                        {group.items.length > 1 && (
+                          <select
+                            value={selectedItemId}
+                            onChange={(e) => setSelectedVariants(prev => ({ ...prev, [group.baseName]: parseInt(e.target.value) }))}
+                            className="ml-2 text-sm border border-gray-300 rounded-md p-1 focus:ring-yellow-500"
+                          >
+                            {group.items.map(v => (
+                              <option key={v.id} value={v.id}>{v.sizeLabel}</option>
+                            ))}
+                          </select>
                         )}
                       </div>
                       <p className="text-sm text-gray-500">ITEM CODE: {item.item_code} | Unit: {item.unit || 'pcs'}</p>
@@ -1676,9 +1761,17 @@ setPaymentBasis('debt')
                   options={unitOptions.map(u => ({ value: u, label: u }))}
                 />
               </div>
-
-              
-
+              <div className="mb-4 mt-4">
+                <Input
+                  label="Sizes (comma-separated, optional)"
+                  value={newItemForm.sizes || ''}
+                  onChange={(e) => setNewItemForm({ ...newItemForm, sizes: e.target.value })}
+                  placeholder="e.g., S, M, L or 10mm, 15mm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  If provided, this will create a separate item for each size (e.g., "Item Name - S", "Item Name - M").
+                </p>
+              </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="secondary" onClick={closeAddItemModal} disabled={addingItem}>
                   Cancel

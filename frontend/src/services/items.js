@@ -69,6 +69,16 @@ export const itemService = {
     return response.data;
   },
 
+  bulkCreate: async (itemsData) => {
+    const response = await api.post('/items/bulk', { items: itemsData });
+    return response.data;
+  },
+
+  scrapeVariants: async (data) => {
+    const response = await api.post('/items/scrape-variants', data);
+    return response.data;
+  },
+
   update: async (id, itemData) => {
     const response = await api.put(`/items/${id}`, itemData);
     return response.data;

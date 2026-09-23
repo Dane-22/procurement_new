@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate, requireItemManagement } from '../middleware/auth.js';
 import db from '../config/database.js';
+import { scrapeVariants } from '../services/scraperService.js';
 
 const router = express.Router();
 
@@ -237,6 +238,76 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Create multiple items (bulk)
+router.post('/bulk', authenticate, requireItemManagement, async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const { items } = req.body;
+    const created_by = req.user.id;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Items array is required' });
+    }
+
+    await connection.beginTransaction();
+
+    const createdItems = [];
+
+    for (const item of items) {
+      const { item_name, description, category_id, unit, brand, product_type, material, color, size, image_url } = item;
+
+      if (!item_name || !String(item_name).trim()) {
+        throw new Error('Item name is required for all items');
+      }
+
+      const normalizedCategoryId = Number(category_id);
+      if (!Number.isInteger(normalizedCategoryId) || normalizedCategoryId <= 0) {
+        throw new Error(`Category is required for item: ${item_name}`);
+      }
+
+      let result;
+      let item_code;
+      const skuParts = { brand, product_type, material, color, size };
+      
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        item_code = await getNextSku(skuParts);
+        try {
+          [result] = await connection.query(
+            'INSERT INTO items (item_code, item_name, description, category_id, unit, created_by, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [item_code, item_name, description, normalizedCategoryId, unit, created_by, image_url || null]
+          );
+          break;
+        } catch (error) {
+          const isSkuDuplicate = error?.code === 'ER_DUP_ENTRY' && String(error?.message || '').includes('item_code');
+          if (!isSkuDuplicate || attempt === 4) throw error;
+        }
+      }
+
+      createdItems.push({
+        id: result.insertId,
+        item_code,
+        item_name
+      });
+    }
+
+    await connection.commit();
+
+    res.status(201).json({ 
+      message: 'Items created successfully', 
+      items: createdItems
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error('Bulk create item error:', error);
+    if (error?.code === 'ER_DUP_ENTRY' && String(error?.message || '').includes('item_code')) {
+      return res.status(400).json({ message: 'SKU already exists' });
+    }
+    res.status(500).json({ message: 'Failed to create items: ' + error.message });
+  } finally {
+    connection.release();
+  }
+});
+
 // Create item (procurement, admin, super_admin, engineer can create)
 router.post('/', authenticate, requireItemManagement, async (req, res) => {
   try {
@@ -342,6 +413,23 @@ router.delete('/:id', authenticate, requireItemManagement, async (req, res) => {
   } catch (error) {
     console.error('Delete item error:', error);
     res.status(500).json({ message: 'Failed to delete item: ' + error.message });
+  }
+});
+
+// Scrape variants based on basic item details
+router.post('/scrape-variants', authenticate, requireItemManagement, async (req, res) => {
+  try {
+    const { item_name, category, description, unit } = req.body;
+    
+    if (!item_name || !category) {
+      return res.status(400).json({ message: 'Item name and category are required to scrape variants' });
+    }
+
+    const variants = await scrapeVariants(item_name, category, description || '', unit || 'pcs');
+    res.json(variants);
+  } catch (error) {
+    console.error('Scrape variants error:', error);
+    res.status(500).json({ message: 'Failed to scrape variants: ' + error.message });
   }
 });
 

@@ -12,7 +12,7 @@ When your colleague says "Code is updated on GitHub," run this sequence on the s
 
 ```bash
 # 1. Enter the project directory
-cd /var/www/procurement_system
+cd /var/www/procurement
 
 # 2. Pull the latest changes from GitHub
 git fetch origin main

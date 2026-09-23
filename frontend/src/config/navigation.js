@@ -96,7 +96,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-orders',
     label: 'Purchase Orders',
     icon: ShoppingCart,
-    roles: ['admin']
+    roles: ['admin', 'super_admin', 'super_admin_rep']
   },
 
   // Payment Requests - TEMPORARILY COMMENTED OUT

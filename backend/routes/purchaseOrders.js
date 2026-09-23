@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate, requireAdmin, requireSuperAdmin, requireAdminOnly } from '../middleware/auth.js';
+import { authenticate, requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
 import upload from '../middleware/upload.js';
 import db from '../config/database.js';
 import { createNotification, getSuperAdmins, getAdmins } from '../utils/notifications.js';
@@ -170,7 +170,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Create PO (admin only)
-router.post('/', authenticate, requireAdminOnly, async (req, res) => {
+router.post('/', authenticate, requireAdmin, async (req, res) => {
   let conn;
   try {
     const { purchase_request_id, supplier_id, expected_delivery_date, place_of_delivery, project, delivery_term, payment_term, notes, items, service_request_id, save_as_draft } = req.body;
