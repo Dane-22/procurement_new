@@ -32,7 +32,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-requests',
     label: 'Purchase Requests',
     icon: FileText,
-    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
   
   // For Reviews
