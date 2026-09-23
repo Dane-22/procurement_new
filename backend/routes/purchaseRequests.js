@@ -1258,8 +1258,9 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
     console.log('🔍 Review workflow: PR ID:', req.params.id, 'Requester role:', pr.requester_role);
 
-    if (pr.requester_role === 'engineer') {
-      // Engineer requester: Engineers → Admins → Super Admin Rep → Super Admin
+    if (pr.requester_role !== 'admin') {
+      // Non-admin requesters (Engineer, Senior Project Manager, CEO, Super Admin)
+      // Go through full chain: Engineers → Admins → Super Admin Rep → Super Admin
       // Check if all engineers have approved
       const [engineerReviews] = await conn.query(
         `SELECT prr.review_status 
@@ -1469,57 +1470,6 @@ router.post('/:id/review', authenticate, async (req, res) => {
           notificationMessage = `Purchase Request ${pr.pr_number} has been approved by Super Admin Representative and is ready for PO creation`;
         }
       }
-    } else if (pr.requester_role === 'senior_project_manager') {
-      // Super Admin Rep requester: Super Admin Rep → Super Admin
-      const [repReviews] = await conn.query(
-        `SELECT prr.review_status 
-         FROM purchase_request_reviews prr
-         JOIN employees e ON prr.reviewer_id = e.id
-         WHERE prr.purchase_request_id = ? AND e.role = 'senior_project_manager' AND e.is_active = 1`,
-        [req.params.id]
-      );
-
-      console.log('🔍 Super Admin Rep reviews (rep requester):', repReviews);
-
-      const repApproved = repReviews.length > 0 && repReviews.every(r => r.review_status === 'approved');
-      const repPending = repReviews.some(r => r.review_status === 'pending');
-      const repRejected = repReviews.some(r => r.review_status === 'rejected');
-
-      if (repRejected) {
-        await conn.query(
-          'UPDATE purchase_requests SET status = ?, rejection_reason = ?, updated_at = NOW() WHERE id = ?',
-          ['Rejected', 'Rejected by Super Admin Representative', req.params.id]
-        );
-        await conn.commit();
-        res.json({ message: 'PR rejected by Super Admin Representative', status: 'Rejected' });
-        return;
-      }
-
-      if (repPending) {
-        await conn.commit();
-        res.json({ message: 'Review submitted successfully. Waiting for other Super Admin Representatives.' });
-        return;
-      }
-
-      if (repApproved || repReviews.length === 0) {
-        const totalAmount = parseFloat(pr.total_amount) || 0;
-        if (totalAmount < 100000) {
-          newStatus = 'For Purchase';
-          notificationRecipients = await getSuperAdmins();
-          notificationTitle = 'PR Approved (< 100,000)';
-          notificationMessage = `Purchase Request ${pr.pr_number} has been approved by Super Admin Representative and is ready for PO creation`;
-        } else {
-          newStatus = 'For Super Admin Final Approval';
-          notificationRecipients = await getSuperAdmins();
-          notificationTitle = 'PR Ready for Final Approval';
-          notificationMessage = `Purchase Request ${pr.pr_number} has been reviewed by all required reviewers and is ready for your final approval`;
-        }
-      }
-    } else {
-      // Super Admin requester: No review needed
-      await conn.commit();
-      res.json({ message: 'Review submitted successfully.' });
-      return;
     }
 
     console.log('🔍 New status:', newStatus);
