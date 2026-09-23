@@ -846,9 +846,9 @@ setPaymentBasis('debt')
       let baseName = item.item_name
       let size = 'Default'
 
-      const startMatchX = item.item_name.match(/^([\d\s./"'\-]+[xX][\d\s./"'\-xX]+)\s+(.*)$/i)
-      const startMatchUnit = item.item_name.match(/^([\d./\-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|"|'|d))\s+(.*)$/i)
-      const endMatch = item.item_name.match(/^(.*?)\s+([\d./\-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|pcs|set|"|'|d|x\d+)?|[SML]|XL|XXL)$/i)
+      const startMatchX = item.item_name.match(/^([\d\s./"'-]+[xX][\d\s./"'xX-]+)\s+(.*)$/i)
+      const startMatchUnit = item.item_name.match(/^([\d./-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|"|'|d))\s+(.*)$/i)
+      const endMatch = item.item_name.match(/^(.*?)\s+([\d./-]+\s*(?:mm|inch|in|m|cm|kg|g|lb|oz|L|ml|pcs|set|"|'|d|x\d+)?|[SML]|XL|XXL)$/i)
 
       if (startMatchX) {
         size = startMatchX[1].trim()
