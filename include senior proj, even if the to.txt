@@ -1,0 +1,33 @@
+include senior proj, even if the total amount is greater than the threshold
+set interface for accounting team
+set threshold for purchase request approval for engr. michelle 
+change the rolase from super admin rep to senior proj. manager senior proj engr.
+
+
+project management (cash flow)
+
+integrate a payment gateway API
+
+
+Change role name
+
+
+
+DEV DAILY REPORTING
+9-21-2026
+
+📍 Task Done:Procurement System (Mobile UI & Date Picker Fix):
+Resolved mobile date picker issues to ensure consistent and reliable date selection across forms.   
+Standardized the in-app notification dropdown overlay across custom headers and native tabs with an 80px right-margin to eliminate Expo Go UI overlaps.   
+Resolved notification tap routing (404 errors) to open PR previews directly, dynamically displaying the requester's full name in the payload.   
+
+Procurement System (Push Engine & Real-Time Delivery):
+Configured dual background push dispatching to Mobile devices (Expo Push) and Web browsers (Web Push via VAPID keys).   
+Isolated socket connections into targeted user_{ID} and role_{ROLE} rooms to ensure private, recipient-specific notification delivery.   
+
+📍 Ongoing / Monitoring:Procurement System (End-to-End PR Flow Testing): 
+Performing comprehensive cross-role testing (Engineer ➔ Admin ➔ Super Admin Rep ➔ Super Admin) across Web and Mobile to verify all stage gates and state transitions operate reliably.   
+
+Procurement System (Mobile Notification Audio): 
+Investigating and debugging mobile notification audio playback issues.   
+Procurement System (Push Notification Reliability): Tracking background push delivery latency, token registration stability, and unread counters across iOS, Android, and Web.   

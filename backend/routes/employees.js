@@ -13,10 +13,10 @@ router.post('/',
   [
     body('employee_no').notEmpty().withMessage('Employee number is required'),
     body('first_name').notEmpty().withMessage('First name is required'),
-    body('middle_initial').optional(),
+    body('middle_initial').optional({ checkFalsy: true }).isLength({ max: 2 }).withMessage('Middle initial cannot exceed 2 characters'),
     body('last_name').notEmpty().withMessage('Last name is required'),
     body('role').isIn(['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']).withMessage('Invalid role'),
-    body('department').optional()
+    body('department').optional({ checkFalsy: true }).isLength({ max: 50 }).withMessage('Department cannot exceed 50 characters')
   ],
   async (req, res) => {
     try {
@@ -128,8 +128,10 @@ router.put('/:id',
   requireSuperAdmin,
   [
     body('first_name').optional().notEmpty().withMessage('First name cannot be empty'),
+    body('middle_initial').optional({ checkFalsy: true }).isLength({ max: 2 }).withMessage('Middle initial cannot exceed 2 characters'),
     body('last_name').optional().notEmpty().withMessage('Last name cannot be empty'),
     body('role').optional().isIn(['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']).withMessage('Invalid role'),
+    body('department').optional({ checkFalsy: true }).isLength({ max: 50 }).withMessage('Department cannot exceed 50 characters'),
     body('is_active').optional().isBoolean().withMessage('is_active must be a boolean')
   ],
   async (req, res) => {

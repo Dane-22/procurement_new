@@ -652,7 +652,7 @@ const Employees = () => {
                 name="middle_initial"
                 value={formData.middle_initial}
                 onChange={handleInputChange}
-                maxLength={5}
+                maxLength={2}
               />
               <FormField
                 label="Last Name"
