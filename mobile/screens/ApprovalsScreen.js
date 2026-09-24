@@ -215,7 +215,7 @@ export default function ApprovalsScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{item.pr_number || `Request #${item.id}`}</Text>
-          <Text style={styles.cardAmount}>â‚±{parseFloat(item.total_amount || 0).toFixed(2)}</Text>
+          <Text style={styles.cardAmount}>₱{parseFloat(item.total_amount || 0).toFixed(2)}</Text>
         </View>
         <Text style={styles.requesterText}>Requester: {requesterName}</Text>
         <Text style={styles.cardDescription}>{item.purpose || 'No description provided'}</Text>
