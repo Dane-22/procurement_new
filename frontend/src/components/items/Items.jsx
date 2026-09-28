@@ -100,6 +100,49 @@ const Select = ({ label, value, onChange, options, required = false, placeholder
   </div>
 )
 
+const UnitField = ({ value, onChange, options, custom, onCustomChange }) => (
+  <div className="mb-4">
+    <div className="mb-1 flex items-center justify-between gap-2">
+      <label htmlFor={custom ? 'custom-item-unit' : undefined} className="block text-sm font-medium text-gray-700">
+        Unit <span className="text-red-500">*</span>
+      </label>
+      <button
+        type="button"
+        onClick={() => {
+          onCustomChange(!custom)
+          onChange(custom ? 'pcs' : '')
+        }}
+        className="text-xs font-semibold text-amber-700 hover:text-amber-900"
+      >
+        {custom ? 'Choose existing' : '+ Add unit'}
+      </button>
+    </div>
+    {custom ? (
+      <input
+        id="custom-item-unit"
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        maxLength={50}
+        placeholder="e.g., sack, pair, cubic meter"
+        autoFocus
+        required
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+      />
+    ) : (
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required
+        className="w-full px-3 py-2 border border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+      >
+        {options.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+      </select>
+    )}
+    {custom && <p className="mt-1 text-xs text-gray-500">The unit will be available for future items after this item is created.</p>}
+  </div>
+)
+
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-PH', {
     style: 'currency',
@@ -158,6 +201,7 @@ const Items = () => {
   // Categories from database
   const [dbCategories, setDbCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(false)
+  const [catalogUnits, setCatalogUnits] = useState([])
   
   // Cart state
   const [cart, setCart] = useState([])
@@ -190,6 +234,8 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [newItemForm, setNewItemForm] = useState(DEFAULT_ITEM_FORM)
   const [editItemForm, setEditItemForm] = useState(DEFAULT_ITEM_FORM)
+  const [addingCustomUnit, setAddingCustomUnit] = useState(false)
+  const [editingCustomUnit, setEditingCustomUnit] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
   const [addingItem, setAddingItem] = useState(false)
   const [, setLoadingNextSku] = useState(false)
@@ -209,6 +255,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
   useEffect(() => {
     fetchBranches()
     fetchCategories()
+    fetchUnits()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -299,6 +346,14 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
     }
   }
 
+  const fetchUnits = async () => {
+    try {
+      setCatalogUnits(await itemService.getUnits())
+    } catch (err) {
+      console.error('Failed to fetch item units:', err)
+    }
+  }
+
   const handleProjectChange = (projectName) => {
     const selectedBranch = branches.find(b => b?.branch_name === projectName)
 
@@ -347,6 +402,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
 
   const openAddItemModal = async () => {
     setNewItemForm(DEFAULT_ITEM_FORM)
+    setAddingCustomUnit(false)
     setGeneratingSkuFromName(false)
     setShowAddItemModal(true)
   }
@@ -358,6 +414,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
   const closeAddItemModal = () => {
     setShowAddItemModal(false)
     setNewItemForm(DEFAULT_ITEM_FORM)
+    setAddingCustomUnit(false)
     setLoadingNextSku(false)
   }
 
@@ -370,6 +427,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
       category_id: item?.category_id ? String(item.category_id) : '',
       unit: item?.unit || 'pcs'
     })
+    setEditingCustomUnit(false)
     setShowEditItemModal(true)
   }
 
@@ -377,6 +435,7 @@ const [paymentBasis, setPaymentBasis] = useState('debt')
     setShowEditItemModal(false)
     setEditingItem(null)
     setEditItemForm(DEFAULT_ITEM_FORM)
+    setEditingCustomUnit(false)
   }
 
   const openPreview = () => {
@@ -506,12 +565,18 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
       return
     }
 
+    const unit = newItemForm.unit.trim()
+    if (!unit) {
+      alert('Unit is required')
+      return
+    }
+
     try {
       setAddingItem(true)
       const baseData = {
         description: newItemForm.description,
         category_id: parseInt(newItemForm.category_id, 10),
-        unit: newItemForm.unit,
+        unit,
         brand: newItemForm.brand || null,
         product_type: newItemForm.product_type || null,
         material: newItemForm.material || null,
@@ -538,6 +603,7 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
 
       closeAddItemModal()
       fetchItems()
+      fetchUnits()
     } catch (err) {
       console.error('Failed to create item(s):', err)
       alert('Failed to create item(s): ' + (err.response?.data?.message || err.message))
@@ -563,14 +629,22 @@ supplier_address: supplierAddress.trim() || null, // Add supplier address to dat
       return
     }
 
+    const unit = editItemForm.unit.trim()
+    if (!unit) {
+      alert('Unit is required')
+      return
+    }
+
     try {
       setUpdatingItem(true)
       await itemService.update(editingItem.id, {
         ...editItemForm,
+        unit,
         category_id: parseInt(editItemForm.category_id, 10)
       })
       closeEditItemModal()
       fetchItems()
+      fetchUnits()
     } catch (err) {
       console.error('Failed to update item:', err)
       alert('Failed to update item: ' + (err.response?.data?.message || err.message))
@@ -907,9 +981,10 @@ setPaymentBasis('debt')
   // Category options from database for the add item modal
   const categoryOptions = dbCategories.map(cat => ({ value: cat.id, label: cat.category_name }))
 
-  const unitOptions = [
+  const defaultUnitOptions = [
     'pcs', 'box', 'set', 'unit', 'meter', 'roll', 'kg', 'liter', 'gallon', 'sheet', 'pack', 'bundle'
   ]
+  const unitOptions = [...new Set([...defaultUnitOptions, ...catalogUnits, editItemForm.unit].filter(Boolean))]
 
   const cartContent = (
     <>
@@ -1789,11 +1864,12 @@ setPaymentBasis('debt')
                   placeholder="Select category..."
                   required
                 />
-                <Select
-                  label="Unit"
+                <UnitField
                   value={newItemForm.unit}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, unit: e.target.value })}
-                  options={unitOptions.map(u => ({ value: u, label: u }))}
+                  onChange={(unit) => setNewItemForm((prev) => ({ ...prev, unit }))}
+                  options={unitOptions}
+                  custom={addingCustomUnit}
+                  onCustomChange={setAddingCustomUnit}
                 />
               </div>
               <div className="mb-4 mt-4">
@@ -1869,11 +1945,12 @@ setPaymentBasis('debt')
                   placeholder="Select category..."
                   required
                 />
-                <Select
-                  label="Unit"
+                <UnitField
                   value={editItemForm.unit}
-                  onChange={(e) => setEditItemForm({ ...editItemForm, unit: e.target.value })}
-                  options={unitOptions.map(u => ({ value: u, label: u }))}
+                  onChange={(unit) => setEditItemForm((prev) => ({ ...prev, unit }))}
+                  options={unitOptions}
+                  custom={editingCustomUnit}
+                  onCustomChange={setEditingCustomUnit}
                 />
               </div>
 

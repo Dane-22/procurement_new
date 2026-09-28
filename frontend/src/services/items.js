@@ -51,6 +51,11 @@ export const itemService = {
     return response.data.history || response.data.items || response.data;
   },
 
+  getUnits: async () => {
+    const response = await api.get('/items/units', { cache: false });
+    return Array.isArray(response.data?.units) ? response.data.units : [];
+  },
+
   getById: async (id) => {
     const response = await api.get(`/items/${id}`);
     return response.data.item;

@@ -190,6 +190,22 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Units already used by catalog items, including units added from the item form
+router.get('/units', authenticate, async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT DISTINCT TRIM(unit) AS unit
+      FROM items
+      WHERE unit IS NOT NULL AND TRIM(unit) <> ''
+      ORDER BY unit
+    `);
+    res.json({ units: rows.map((row) => row.unit) });
+  } catch (error) {
+    console.error('Fetch item units error:', error);
+    res.status(500).json({ message: 'Failed to fetch item units' });
+  }
+});
+
 // Get next generated SKU for add item form
 router.get('/next-sku', authenticate, requireItemManagement, async (req, res) => {
   try {
