@@ -12,11 +12,19 @@ import {referenceCache,connectRedis,closeRedis} from '../services/redisCache.js'
 import {createServer} from 'node:http';
 import {createRequire} from 'node:module';
 import {initSocket} from '../utils/socket.js';
+import {prepareRequestWorkflowSchema,columns} from '../services/requestWorkflowSchema.js';
+import pettyCashRouter from '../routes/pettyCashRequests.js';
+import cashRouter from '../routes/cashRequests.js';
+import paymentRequestRouter from '../routes/paymentRequests.js';
+import paymentOrderRouter from '../routes/paymentOrders.js';
+import dvRouter from '../routes/disbursementVouchers.js';
 const socketClient=createRequire(new URL('../../frontend/package.json',import.meta.url))('socket.io-client').io;
 
 assert.match(process.env.DB_NAME,/^procurement_workflow_test_\d+$/);
 const app=express();app.use(express.json());app.use('/api/workflows',router);
 app.use('/api/purchase-orders',...guardModule('po'));app.put('/api/purchase-orders/:id/status',(req,res)=>res.json({bypassed:true}));
+app.use('/api/petty-cash-requests',pettyCashRouter);app.use('/api/cash-requests',cashRouter);
+app.use('/api/payment-requests',paymentRequestRouter);app.use('/api/payment-orders',paymentOrderRouter);app.use('/api/disbursement-vouchers',dvRouter);
 const users={engineer:1,engineer2:2,admin:3,admin2:4,senior:5,super_admin:6,super2:7,ceo:8,ceo2:9};
 const roles={engineer:'engineer',engineer2:'engineer',admin:'admin',admin2:'admin',senior:'senior_project_manager',super_admin:'super_admin',super2:'super_admin',ceo:'ceo',ceo2:'ceo'};
 const auth=name=>`Bearer ${jwt.sign({id:users[name]},process.env.JWT_SECRET||'your-secret-key')}`;
@@ -195,4 +203,31 @@ test('Socket.IO rejects missing tokens and client-supplied foreign rooms',async(
   await new Promise(resolve=>setTimeout(resolve,30));io.to('user_3').emit('forbidden',{});await new Promise(resolve=>setTimeout(resolve,30));assert.equal(forbidden,false);
   const own=new Promise(resolve=>authorized.once('allowed',resolve));io.to('user_1').emit('allowed',{ok:true});assert.equal((await own).ok,true);
  }finally{unauthorized.close();authorized.close();await new Promise(resolve=>io.close(resolve));}
+});
+test('older production schema upgrade restores all failing list endpoints and is repeatable without losing records',async()=>{
+ // This test operates ONLY in the uniquely named temporary test database.
+ assert.match(process.env.DB_NAME,/^procurement_workflow_test_\d+$/);
+ const cashColumns=await columns(db,'cash_requests');
+ const status=cashColumns.find(c=>c.Field==='status');
+ const existing=[...status.Type.matchAll(/'((?:''|[^'])*)'/g)].map(m=>m[1]);
+ await db.query(`ALTER TABLE cash_requests MODIFY COLUMN status ENUM(${[...existing,'Legacy Held'].map(v=>db.escape(v)).join(',')}) NULL`);
+ await db.query("INSERT INTO cash_requests(id,cr_number,requested_by,purpose,amount,quantity,status) VALUES(88,'TEST-LEGACY',1,'Preserve older record',10,1,'Legacy Held')");
+ // An older schema cannot contain these links, so clear synthetic links before removing the columns.
+ await db.query('UPDATE payment_requests SET cash_request_id=NULL');
+ const [beforeCash]=await db.query('SELECT id,cr_number,purpose,amount,quantity,status FROM cash_requests ORDER BY id');
+ const [beforePayment]=await db.query('SELECT id,pr_number,amount,status FROM payment_requests ORDER BY id');
+ for(const table of ['petty_cash_liquidation_receipts','petty_cash_liquidation_reviews','petty_cash_liquidation_expenses','petty_cash_liquidation_submissions','petty_cash_liquidations','petty_cash_request_reviews','petty_cash_request_details'])await db.query(`DROP TABLE IF EXISTS ${table}`);
+ for(const name of ['request_kind','payee_name','payee_address','released_by','released_at','release_amount','received_by','received_at'])await db.query(`ALTER TABLE cash_requests DROP COLUMN ${name}`);
+ await db.query('ALTER TABLE payment_requests DROP COLUMN cash_request_id');
+ if((await columns(db,'payment_orders')).some(c=>c.Field==='reimbursement_id'))await db.query('ALTER TABLE payment_orders DROP COLUMN reimbursement_id');
+ await prepareRequestWorkflowSchema(db);await prepareRequestWorkflowSchema(db);
+ const [afterCash]=await db.query('SELECT id,cr_number,purpose,amount,quantity,status FROM cash_requests ORDER BY id');
+ const [afterPayment]=await db.query('SELECT id,pr_number,amount,status FROM payment_requests ORDER BY id');
+ assert.deepEqual(afterCash,beforeCash);assert.deepEqual(afterPayment,beforePayment);
+ const [legacy]=await db.query('SELECT request_kind FROM cash_requests WHERE id=88');assert.equal(legacy[0].request_kind,'standard');
+ assert.ok((await columns(db,'cash_requests')).find(c=>c.Field==='status').Type.includes("'Legacy Held'"));
+ for(const route of ['/api/workflows','/api/cash-requests?kind=standard','/api/petty-cash-requests','/api/payment-requests','/api/payment-orders','/api/disbursement-vouchers']){
+   const response=await supertest(app).get(route).set('Authorization',auth('admin'));
+   assert.equal(response.status,200,`${route}: ${JSON.stringify(response.body)}`);
+ }
 });
