@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import logger from './utils/logger.js';
@@ -21,6 +22,7 @@ import prRoutes from './routes/purchaseRequests.js';
 import poRoutes from './routes/purchaseOrders.js';
 import serviceRequestRoutes from './routes/serviceRequests.js';
 import cashRequestRoutes from './routes/cashRequests.js';
+import pettyCashRequestRoutes from './routes/pettyCashRequests.js';
 import reimbursementRoutes from './routes/reimbursements.js';
 import supplierRoutes from './routes/suppliers.js';
 import categoryRoutes from './routes/categories.js';
@@ -37,6 +39,10 @@ import auditRoutes from './routes/audit.js';
 import settingsRoutes from './routes/settings.js';
 import uploadRoutes from './routes/uploads.js';
 import { startPaymentScheduleReminderJob } from './jobs/paymentScheduleReminders.js';
+import workflowRoutes from './routes/requestWorkflows.js';
+import { guardModule, guardPaymentSource, guardLinkedDocument } from './middleware/requestWorkflowGuard.js';
+import { startRequestWorkflowOutbox } from './jobs/requestWorkflowOutbox.js';
+import { redisClient } from './services/redisCache.js';
 
 dotenv.config();
 
@@ -128,7 +134,11 @@ app.use(sanitizeInput);
 // Rate limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // limit each IP to 500 requests per windowMs (increased from 100)
+  max: 3000,
+  keyGenerator: req => {
+    try { const token=req.headers.authorization?.split(' ')[1]; const user=jwt.verify(token,process.env.JWT_SECRET || 'your-secret-key'); return `user:${user.id}`; }
+    catch { return ipKeyGenerator(req.ip); }
+  },
   message: 'Too many requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -143,6 +153,7 @@ const authLimiter = rateLimit({
 // Apply rate limiting
 app.use('/api/', apiLimiter);
 app.use('/api/auth/', authLimiter);
+app.use('/api/', (req,res,next) => { res.set('Cache-Control','private, no-store'); next(); });
 
 // Make io available to routes
 app.use((req, res, next) => {
@@ -160,7 +171,8 @@ app.get('/api/health', async (req, res) => {
     res.json({ 
       status: 'OK', 
       message: 'Server is running',
-      database: 'Connected'
+      database: 'Connected',
+      redis: { configured: Boolean(process.env.REDIS_URL), connected: Boolean(redisClient()) }
     });
   } catch (error) {
     res.status(500).json({ 
@@ -172,12 +184,22 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Routes
+app.use('/api/workflows', workflowRoutes);
+app.use('/api/purchase-orders', ...guardModule('po'));
+app.use('/api/service-requests', ...guardModule('sr'));
+app.use('/api/cash-requests', ...guardModule('cr'));
+app.use('/api/payment-requests', guardPaymentSource);
+app.use('/api/payment-orders', guardPaymentSource);
+app.use('/api/payment-requests', ...guardLinkedDocument('payment_requests'));
+app.use('/api/payment-orders', ...guardLinkedDocument('payment_orders'));
+app.use('/api/disbursement-vouchers', ...guardLinkedDocument('disbursement_vouchers'));
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/purchase-requests', prRoutes);
 app.use('/api/purchase-orders', poRoutes);
 app.use('/api/service-requests', serviceRequestRoutes);
 app.use('/api/cash-requests', cashRequestRoutes);
+app.use('/api/petty-cash-requests', pettyCashRequestRoutes);
 app.use('/api/reimbursements', reimbursementRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -209,6 +231,7 @@ app.use((req, res) => {
 
 if (process.env.NODE_ENV !== 'test') {
   httpServer.listen(PORT, '0.0.0.0', () => {
+    startRequestWorkflowOutbox();
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV}`);
     if (paymentReminderEnabled) {

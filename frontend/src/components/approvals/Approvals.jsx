@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { displayReviewStatus } from '../../utils/reviewLabels';
 import { purchaseOrderService } from '../../services/purchaseOrders';
 import { purchaseRequestService } from '../../services/purchaseRequests';
 import { paymentRequestService } from '../../services/paymentRequests';
@@ -7,6 +8,7 @@ import { disbursementVoucherService } from '../../services/disbursementVouchers'
 import { cashRequestService } from '../../services/cashRequests';
 import { paymentOrderService } from '../../services/paymentOrders';
 import { reimbursementService } from '../../services/reimbursements';
+import { pettyCashRequestService } from '../../services/pettyCashRequests';
 import api from '../../services/api';
 import { socketService } from '../../services/socket';
 import PRDetailsModal from '../purchase-requests/PRDetailsModal';
@@ -16,7 +18,8 @@ import DVPreviewModal from '../disbursement-vouchers/DVPreviewModal';
 import SRPreviewModal from '../service-requests/SRPreviewModal';
 import CRPreviewModal from '../cash-requests/CRPreviewModal';
 import POApprovalPreviewModal from '../payment-orders/POApprovalPreviewModal';
-import { CheckCircle, XCircle, Clock, ChevronUp, ChevronDown, FileText, CreditCard, Eye, X, Trash2 } from 'lucide-react';
+import PettyCashPreviewModal from '../petty-cash/PettyCashPreviewModal';
+import { CheckCircle, XCircle, Clock, ChevronUp, ChevronDown, FileText, CreditCard, Eye, X, Trash2, Banknote } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const Card = ({ children, className = '' }) => (
@@ -76,6 +79,8 @@ const formatDate = (dateString) => {
   });
 };
 
+const canReviewPettyCash = (request) => Number(request?.can_review) === 1 || request?.can_review === true;
+
 // Calculate total from PR items
 const calculatePRAmount = (pr, prAmountsCache = {}) => {
   console.log('Calculating amount for PR:', pr?.pr_number, 'Items:', pr?.items);
@@ -117,6 +122,11 @@ const StatusBadge = ({ status }) => {
       'Received': 'bg-teal-100 text-teal-800',
       'Rejected': 'bg-red-100 text-red-800',
       'Cancelled': 'bg-gray-100 text-gray-600',
+      'For Engineer Review': 'bg-blue-100 text-blue-800',
+      'For Admin Review': 'bg-amber-100 text-amber-800',
+      'For Senior Project Manager Review': 'bg-orange-100 text-orange-800',
+      'For Super Admin Review': 'bg-purple-100 text-purple-800',
+      'For CEO Approval': 'bg-indigo-100 text-indigo-800',
       'On Hold': 'bg-orange-100 text-orange-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
@@ -124,7 +134,7 @@ const StatusBadge = ({ status }) => {
 
   return (
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
-      {status}
+      {displayReviewStatus(status)}
     </span>
   );
 };
@@ -164,6 +174,10 @@ const Approvals = () => {
   const [crSubTab, setCrSubTab] = useState('pending');
   const [paymentOrderSubTab, setPaymentOrderSubTab] = useState('pending');
   const [reimbursements, setReimbursements] = useState([]);
+  const [pettyCashRequests, setPettyCashRequests] = useState([]);
+  const [pettyCashLoadError, setPettyCashLoadError] = useState('');
+  const [previewPettyCashRequest, setPreviewPettyCashRequest] = useState(null);
+  const [pettyCashProcessing, setPettyCashProcessing] = useState(false);
   const [rmbSubTab, setRmbSubTab] = useState('pending');
   ;
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -241,7 +255,7 @@ const Approvals = () => {
     try {
       setLoading(true);
       console.log('Approvals: Calling APIs...');
-      const [pos, prs, paymentReqs, srs, crs, dvs, paymentOrdersData, reimbursementsData, orderNumbersResponse] = await Promise.all([
+      const [pos, prs, paymentReqs, srs, crs, dvs, paymentOrdersData, reimbursementsData, orderNumbersResponse, pettyCashRows] = await Promise.allSettled([
         purchaseOrderService.getAll(),
         purchaseRequestService.getAll('all'),
         paymentRequestService.getAll(),
@@ -250,29 +264,67 @@ const Approvals = () => {
         disbursementVoucherService.getAll(),
         paymentOrderService.getAll(),
         reimbursementService.getAll(),
-        api.get('/order-numbers', { cache: false })
+        api.get('/order-numbers', { cache: false }),
+        pettyCashRequestService.list()
       ]);
-      console.log('Approvals: APIs returned, setting state...');
-      setPurchaseOrders(pos);
-      setPurchaseRequests(prs);
-      setPaymentRequests(paymentReqs);
-      setServiceRequests(srs);
-      setCashRequests(crs);
-      setDisbursementVouchers(dvs);
-      setPaymentOrders(paymentOrdersData);
-      setReimbursements(reimbursementsData);
-      const locked = new Set(
-        (orderNumbersResponse?.data || [])
-          .filter((row) => row?.is_locked)
-          .map((row) => String(row?.order_number || '').trim())
-          .filter(Boolean)
-      );
-      setLockedOrderNumbers(locked);
-      console.log('Approvals: State updated, PR count:', prs.length);
+      const updateSection = (result, setter, name) => {
+        if (result.status === 'fulfilled') setter(result.value);
+        else console.error(`Approvals: Failed to load ${name}`, result.reason);
+      };
+      updateSection(pos, setPurchaseOrders, 'Purchase Orders');
+      updateSection(prs, setPurchaseRequests, 'Purchase Requests');
+      updateSection(paymentReqs, setPaymentRequests, 'Payment Requests');
+      updateSection(srs, setServiceRequests, 'Service Requests');
+      updateSection(crs, setCashRequests, 'Cash Requests');
+      updateSection(dvs, setDisbursementVouchers, 'Disbursement Vouchers');
+      updateSection(paymentOrdersData, setPaymentOrders, 'Payment Orders');
+      updateSection(reimbursementsData, setReimbursements, 'Reimbursements');
+      if (orderNumbersResponse.status === 'fulfilled') {
+        setLockedOrderNumbers(new Set(
+          (orderNumbersResponse.value?.data || [])
+            .filter((row) => row?.is_locked)
+            .map((row) => String(row?.order_number || '').trim())
+            .filter(Boolean)
+        ));
+      } else console.error('Approvals: Failed to load Order Numbers', orderNumbersResponse.reason);
+      if (pettyCashRows.status === 'fulfilled' && Array.isArray(pettyCashRows.value)) {
+        setPettyCashRequests(pettyCashRows.value);
+        setPettyCashLoadError('');
+      } else {
+        const reason = pettyCashRows.status === 'rejected' ? pettyCashRows.reason : null;
+        console.error('Approvals: Failed to load Petty Cash Requests', reason || pettyCashRows.value);
+        setPettyCashLoadError(reason?.response?.data?.message || 'Could not load Petty Cash Requests. Please try again.');
+      }
     } catch (err) {
       console.error('Approvals: Failed to fetch data', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openPettyCashRequest = async (request) => {
+    try {
+      const fullRequest = await pettyCashRequestService.getById(request.id);
+      setPreviewPettyCashRequest(fullRequest);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to load Petty Cash Request');
+    }
+  };
+
+  const reviewPettyCashRequest = async (decision) => {
+    if (!previewPettyCashRequest) return;
+    const comment = decision === 'rejected' ? window.prompt('Reason for rejection:') : '';
+    if (decision === 'rejected' && !comment?.trim()) return;
+    if (decision === 'approved' && !window.confirm('Approve this Petty Cash Request?')) return;
+    try {
+      setPettyCashProcessing(true);
+      await pettyCashRequestService.review(previewPettyCashRequest.id, decision, comment || '');
+      setPreviewPettyCashRequest(null);
+      await fetchData();
+    } catch (err) {
+      alert(err.response?.data?.message || `Failed to ${decision} Petty Cash Request`);
+    } finally {
+      setPettyCashProcessing(false);
     }
   };
 
@@ -357,6 +409,29 @@ const Approvals = () => {
   const approvedPRs = purchaseRequests.filter(pr => 
     pr.status === 'For Purchase' || pr.status === 'PO Created' || pr.status === 'Completed'
   );
+
+  const canReviewPurchaseRequest = (pr) =>
+    !['For Purchase', 'PO Created', 'Completed'].includes(pr?.status) &&
+    canApproveByStatus(pr?.status, user?.role);
+  const getRequestRequester = (pr) =>
+    `${pr?.requester_first_name || ''} ${pr?.requester_last_name || ''}`.trim() ||
+    `${pr?.first_name || ''} ${pr?.last_name || ''}`.trim() ||
+    `${pr?.prepared_by_first_name || ''} ${pr?.prepared_by_last_name || ''}`.trim() ||
+    pr?.requested_by_name || pr?.prepared_by || '—';
+  const renderReviewButton = ({ canReview, onClick, disabled = false }) => (
+    <Button
+      variant={canReview ? 'primary' : 'secondary'}
+      size="sm"
+      disabled={disabled}
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
+    >
+      <Eye className="mr-1.5 h-4 w-4" /> {canReview ? 'Review' : 'View'}
+    </Button>
+  );
+  const renderPRAction = (pr) => {
+    const canReview = canReviewPurchaseRequest(pr);
+    return renderReviewButton({ canReview, onClick: () => handleViewPR(pr) });
+  };
 
   // Filter Payment Requests (non-debt) that need approval
   const pendingPaymentRequests = paymentRequests.filter(pr => 
@@ -798,63 +873,6 @@ const Approvals = () => {
     }
   };
 
-  
-  const handleDeletePR = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently delete this request? This action cannot be undone and will be logged.')) return;
-    try {
-      setProcessingId(id);
-      await purchaseRequestService.delete(id);
-      await fetchData();
-    } catch (error) {
-      console.error('Error deleting PR:', error);
-      alert(error.response?.data?.message || 'Failed to delete request');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleDeleteCR = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently delete this request? This action cannot be undone and will be logged.')) return;
-    try {
-      setProcessingId(id);
-      await cashRequestService.delete(id);
-      await fetchData();
-    } catch (error) {
-      console.error('Error deleting CR:', error);
-      alert(error.response?.data?.message || 'Failed to delete request');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleDeleteSR = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently delete this request? This action cannot be undone and will be logged.')) return;
-    try {
-      setProcessingId(id);
-      await serviceRequestService.delete(id);
-      await fetchData();
-    } catch (error) {
-      console.error('Error deleting SR:', error);
-      alert(error.response?.data?.message || 'Failed to delete request');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleDeletePaymentRequest = async (id) => {
-    if (!window.confirm('Are you sure you want to permanently delete this request? This action cannot be undone and will be logged.')) return;
-    try {
-      setProcessingId(id);
-      await paymentRequestService.delete(id);
-      await fetchData();
-    } catch (error) {
-      console.error('Error deleting Payment Request:', error);
-      alert(error.response?.data?.message || 'Failed to delete request');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const handleApproveReimbursement = async (id, status) => {
     const row = reimbursements.find((item) => item.id === id);
     if (blockIfLockedOrder(row?.order_number)) return;
@@ -938,6 +956,24 @@ const Approvals = () => {
               {pendingPaymentRequests.length > 0 && (
                 <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs">
                   {pendingPaymentRequests.length}
+                </span>
+              )}
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('petty-cash-requests')}
+            className={`pb-3 text-sm font-medium border-b-2 transition-colors flex-shrink-0 ${
+              activeTab === 'petty-cash-requests'
+                ? 'border-yellow-500 text-yellow-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Banknote className="w-4 h-4" />
+              <span>Petty Cash Requests</span>
+              {pettyCashRequests.length > 0 && (
+                <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs">
+                  {pettyCashRequests.length}
                 </span>
               )}
             </div>
@@ -1035,6 +1071,64 @@ const Approvals = () => {
         </nav>
       </div>
 
+      {activeTab === 'petty-cash-requests' && (
+        <Card className="overflow-hidden">
+          <div className="flex flex-col gap-1 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-gray-900">All Petty Cash Requests</h3>
+              <p className="mt-1 text-sm text-gray-500">View every request and its current status. Review actions are available when a request is assigned to you.</p>
+            </div>
+            <div className="text-sm text-gray-500">
+              <span>{pettyCashRequests.length} total</span>
+              <span className="mx-2">·</span>
+              <span>{pettyCashRequests.filter(canReviewPettyCash).length} awaiting your review</span>
+            </div>
+          </div>
+          {pettyCashLoadError && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <span>{pettyCashLoadError}</span>
+              <button type="button" className="font-medium underline" onClick={fetchData}>Retry</button>
+            </div>
+          )}
+          {pettyCashRequests.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px]">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left">
+                    {['Request No.', 'Requester', 'Project', 'Amount', 'Status', 'Date needed', 'Action'].map((label) => (
+                      <th key={label} className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pettyCashRequests.map((request) => (
+                    <tr key={request.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/70">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{request.cr_number || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{`${request.requester_first_name || ''} ${request.requester_last_name || ''}`.trim() || request.requested_by_name || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{request.project || '—'}</td>
+                      <td className="px-4 py-3 text-sm font-medium tabular-nums text-gray-900">{formatCurrency(request.amount)}</td>
+                      <td className="px-4 py-3">{renderStatusWithLock(request)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(request.date_needed || request.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <Button variant={canReviewPettyCash(request) ? 'primary' : 'secondary'} size="sm" onClick={() => openPettyCashRequest(request)}>
+                          <Eye className="mr-1.5 h-4 w-4" /> {canReviewPettyCash(request) ? 'Review' : 'View'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : !pettyCashLoadError && (
+            <div className="px-6 py-14 text-center">
+              <Banknote className="mx-auto mb-3 h-8 w-8 text-gray-400" />
+              <p className="font-medium text-gray-900">No Petty Cash Requests have been created</p>
+              <p className="mt-1 text-sm text-gray-500">Created requests will appear here with their current review status.</p>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Purchase Orders Tab */}
       {activeTab === 'purchase-orders' && (
         <div className="space-y-4">
@@ -1120,9 +1214,11 @@ const Approvals = () => {
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">PO Number</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">PR Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Supplier</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Total Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -1136,47 +1232,16 @@ const Approvals = () => {
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.pr_number || '-'}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.supplier_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.total_amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePO(po.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleHoldPO(po.id); }}
-                            >
-                              <Clock className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPO(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPO(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1218,39 +1283,16 @@ const Approvals = () => {
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.pr_number || '-'}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.supplier_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.total_amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePO(po.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPO(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPO(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1292,31 +1334,16 @@ const Approvals = () => {
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.pr_number || '-'}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.supplier_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.total_amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPO(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewPO(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1353,7 +1380,7 @@ const Approvals = () => {
                     (poSubTab === 'on-hold' && onHoldPOs.length === 0) ||
                     (poSubTab === 'approved' && approvedPOs.length === 0)) && (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-gray-500">
+                      <td colSpan="8" className="py-8 text-center text-gray-500">
                         No {poSubTab === 'pending' ? 'pending' : poSubTab === 'on-hold' ? 'on hold' : 'approved'} purchase orders
                       </td>
                     </tr>
@@ -1372,37 +1399,12 @@ const Approvals = () => {
                     {renderStatusWithLock(po)}
                   </div>
                   <InfoRow label="PR Number" value={po.pr_number || '-'} />
+                  <InfoRow label="Requester" value={getRequestRequester(po)} />
                   <InfoRow label="Supplier" value={po.supplier_name || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(po.total_amount)} />
+                  <InfoRow label="Date Needed" value={formatDate(po.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        disabled={processingId === po.id}
-                        onClick={() => handleApprovePO(po.id)}
-                        className="px-2"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        disabled={processingId === po.id}
-                        onClick={() => handleHoldPO(po.id)}
-                        className="px-2"
-                      >
-                        <Clock className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewPO(po)}
-                        className="px-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {renderReviewButton({ canReview: true, onClick: () => handleViewPO(po) })}
                     <button
                       onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -1430,28 +1432,12 @@ const Approvals = () => {
                     {renderStatusWithLock(po)}
                   </div>
                   <InfoRow label="PR Number" value={po.pr_number || '-'} />
+                  <InfoRow label="Requester" value={getRequestRequester(po)} />
                   <InfoRow label="Supplier" value={po.supplier_name || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(po.total_amount)} />
+                  <InfoRow label="Date Needed" value={formatDate(po.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        disabled={processingId === po.id}
-                        onClick={() => handleApprovePO(po.id)}
-                        className="px-2"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewPO(po)}
-                        className="px-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {renderReviewButton({ canReview: true, onClick: () => handleViewPO(po) })}
                     <button
                       onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -1479,17 +1465,12 @@ const Approvals = () => {
                     {renderStatusWithLock(po)}
                   </div>
                   <InfoRow label="PR Number" value={po.pr_number || '-'} />
+                  <InfoRow label="Requester" value={getRequestRequester(po)} />
                   <InfoRow label="Supplier" value={po.supplier_name || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(po.total_amount)} />
+                  <InfoRow label="Date Needed" value={formatDate(po.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewPO(po)}
-                      className="px-2"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
+                    {renderReviewButton({ canReview: false, onClick: () => handleViewPO(po) })}
                     <button
                       onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -1605,10 +1586,12 @@ const Approvals = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">PR Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Payee Name</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Project</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -1621,59 +1604,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{pr.pr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(calculatePRAmount(pr, prAmounts))}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === pr.id || !canApproveByStatus(pr.status, user?.role)}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePR(pr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={processingId === pr.id}
-                              onClick={(e) => { e.stopPropagation(); handleHoldPR(pr.id); }}
-                            >
-                              <Clock className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === pr.id}
-                              onClick={(e) => { e.stopPropagation(); handleRejectPR(pr); }}
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === pr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeletePR(pr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPR(pr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderPRAction(pr)}</td>
                       </tr>
                       {expandedId === pr.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1714,43 +1655,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{pr.pr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(calculatePRAmount(pr))}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === pr.id || !canApproveByStatus(pr.status, user?.role)}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePR(pr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === pr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeletePR(pr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPR(pr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderPRAction(pr)}</td>
                       </tr>
                       {expandedId === pr.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1791,35 +1706,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{pr.pr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(calculatePRAmount(pr, prAmounts))}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === pr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeletePR(pr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPR(pr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderPRAction(pr)}</td>
                       </tr>
                       {expandedId === pr.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -1856,7 +1753,7 @@ const Approvals = () => {
                     (prSubTab === 'on-hold' && onHoldPRs.length === 0) ||
                     (prSubTab === 'approved' && approvedPRs.length === 0)) && (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-gray-500">
+                      <td colSpan="8" className="py-8 text-center text-gray-500">
                         No {prSubTab === 'pending' ? 'pending' : prSubTab === 'on-hold' ? 'on hold' : 'approved'} purchase requests
                       </td>
                     </tr>
@@ -1874,47 +1771,13 @@ const Approvals = () => {
                     <span className="text-sm font-semibold text-gray-900">{pr.pr_number}</span>
                     {renderStatusWithLock(pr)}
                   </div>
+                  <InfoRow label="Requester" value={getRequestRequester(pr)} />
                   <InfoRow label="Payee" value={pr.payee_name || '-'} />
                   <InfoRow label="Project" value={pr.project || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(calculatePRAmount(pr, prAmounts))} />
+                  <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        disabled={processingId === pr.id || !canApproveByStatus(pr.status, user?.role)}
-                        onClick={() => handleApprovePR(pr.id)}
-                        className="px-2"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={processingId === pr.id}
-                        onClick={() => handleHoldPR(pr.id)}
-                        className="px-2"
-                      >
-                        <Clock className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        disabled={processingId === pr.id}
-                        onClick={() => handleRejectPR(pr)}
-                        className="px-2"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewPR(pr)}
-                        className="px-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {renderPRAction(pr)}
                     <button
                       onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -1941,29 +1804,13 @@ const Approvals = () => {
                     <span className="text-sm font-semibold text-gray-900">{pr.pr_number}</span>
                     {renderStatusWithLock(pr)}
                   </div>
+                  <InfoRow label="Requester" value={getRequestRequester(pr)} />
                   <InfoRow label="Payee" value={pr.payee_name || '-'} />
                   <InfoRow label="Project" value={pr.project || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(calculatePRAmount(pr))} />
+                  <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="success"
-                        size="sm"
-                        disabled={processingId === pr.id || !canApproveByStatus(pr.status, user?.role)}
-                        onClick={() => handleApprovePR(pr.id)}
-                        className="px-2"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewPR(pr)}
-                        className="px-2"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {renderPRAction(pr)}
                     <button
                       onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -1990,18 +1837,13 @@ const Approvals = () => {
                     <span className="text-sm font-semibold text-gray-900">{pr.pr_number}</span>
                     {renderStatusWithLock(pr)}
                   </div>
+                  <InfoRow label="Requester" value={getRequestRequester(pr)} />
                   <InfoRow label="Payee" value={pr.payee_name || '-'} />
                   <InfoRow label="Project" value={pr.project || '-'} />
                   <InfoRow label="Amount" value={formatCurrency(calculatePRAmount(pr, prAmounts))} />
+                  <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                   <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewPR(pr)}
-                      className="px-2"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
+                    {renderPRAction(pr)}
                     <button
                       onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)}
                       className="text-gray-400 hover:text-gray-600"
@@ -2115,10 +1957,12 @@ const Approvals = () => {
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Source Ref</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Payee Name</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Project</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -2137,41 +1981,17 @@ const Approvals = () => {
                           return '-';
                         })()}
                       </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(pr.amount)}</td>
                       <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="success"
-                            size="sm"
-                            disabled={processingId === pr.id}
-                            onClick={(e) => { e.stopPropagation(); handleApprovePaymentRequest(pr.id); }}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={processingId === pr.id}
-                            onClick={(e) => { e.stopPropagation(); handleHoldPaymentRequest(pr.id); }}
-                          >
-                            <Clock className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pr.id ? null : pr.id); }}
-                          >
-                            {expandedId === pr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                      <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPayment(pr) })}</td>
                     </tr>
                     {expandedId === pr.id && (
                       <tr>
-                        <td colSpan="6" className="bg-gray-50 p-4">
+                        <td colSpan="8" className="bg-gray-50 p-4">
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
@@ -2217,50 +2037,17 @@ const Approvals = () => {
                           return '-';
                         })()}
                       </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(pr.amount)}</td>
                       <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="success"
-                            size="sm"
-                            disabled={processingId === pr.id}
-                            onClick={(e) => { e.stopPropagation(); handleApprovePaymentRequest(pr.id); }}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                          {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === pr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeletePaymentRequest(pr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); handleViewPayment(pr); }}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pr.id ? null : pr.id); }}
-                          >
-                            {expandedId === pr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                      <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPayment(pr) })}</td>
                     </tr>
                     {expandedId === pr.id && (
                       <tr>
-                        <td colSpan="6" className="bg-gray-50 p-4">
+                        <td colSpan="8" className="bg-gray-50 p-4">
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
@@ -2307,42 +2094,17 @@ const Approvals = () => {
                           return '-';
                         })()}
                       </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(pr)}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.payee_name}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{pr.project}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(pr.amount)}</td>
                       <td className="py-3 px-4">{renderStatusWithLock(pr)}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === pr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeletePaymentRequest(pr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); handleViewPayment(pr); }}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === pr.id ? null : pr.id); }}
-                          >
-                            {expandedId === pr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </Button>
-                        </div>
-                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatDate(pr.date_needed)}</td>
+                      <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewPayment(pr) })}</td>
                     </tr>
                     {expandedId === pr.id && (
                       <tr>
-                        <td colSpan="6" className="bg-gray-50 p-4">
+                        <td colSpan="8" className="bg-gray-50 p-4">
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
@@ -2379,7 +2141,7 @@ const Approvals = () => {
                   (paymentSubTab === 'on-hold' && onHoldPaymentRequests.length === 0) ||
                   (paymentSubTab === 'approved' && approvedPaymentRequests.length === 0)) && (
                   <tr>
-                    <td colSpan="6" className="py-8 text-center text-gray-500">
+                    <td colSpan="8" className="py-8 text-center text-gray-500">
                       No {paymentSubTab === 'pending' ? 'pending' : paymentSubTab === 'on-hold' ? 'on hold' : 'approved'} payment requests
                     </td>
                   </tr>
@@ -2404,18 +2166,13 @@ const Approvals = () => {
                   </span>
                   {renderStatusWithLock(pr)}
                 </div>
+                <InfoRow label="Requester" value={getRequestRequester(pr)} />
                 <InfoRow label="Payee" value={pr.payee_name || '-'} />
                 <InfoRow label="Project" value={pr.project || '-'} />
                 <InfoRow label="Amount" value={formatCurrency(pr.amount)} />
+                <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <Button variant="success" size="sm" disabled={processingId === pr.id} onClick={() => handleApprovePaymentRequest(pr.id)} className="px-2">
-                      <CheckCircle className="w-4 h-4" />
-                    </Button>
-                    <Button variant="secondary" size="sm" disabled={processingId === pr.id} onClick={() => handleHoldPaymentRequest(pr.id)} className="px-2">
-                      <Clock className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  {renderReviewButton({ canReview: true, onClick: () => handleViewPayment(pr) })}
                   <button onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)} className="text-gray-400 hover:text-gray-600">
                     {expandedId === pr.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
@@ -2446,13 +2203,13 @@ const Approvals = () => {
                   </span>
                   {renderStatusWithLock(pr)}
                 </div>
+                <InfoRow label="Requester" value={getRequestRequester(pr)} />
                 <InfoRow label="Payee" value={pr.payee_name || '-'} />
                 <InfoRow label="Project" value={pr.project || '-'} />
                 <InfoRow label="Amount" value={formatCurrency(pr.amount)} />
+                <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <Button variant="success" size="sm" disabled={processingId === pr.id} onClick={() => handleApprovePaymentRequest(pr.id)} className="px-2">
-                    <CheckCircle className="w-4 h-4" />
-                  </Button>
+                  {renderReviewButton({ canReview: true, onClick: () => handleViewPayment(pr) })}
                   <button onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)} className="text-gray-400 hover:text-gray-600">
                     {expandedId === pr.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
@@ -2483,24 +2240,13 @@ const Approvals = () => {
                   </span>
                   {renderStatusWithLock(pr)}
                 </div>
+                <InfoRow label="Requester" value={getRequestRequester(pr)} />
                 <InfoRow label="Payee" value={pr.payee_name || '-'} />
                 <InfoRow label="Project" value={pr.project || '-'} />
                 <InfoRow label="Amount" value={formatCurrency(pr.amount)} />
+                <InfoRow label="Date Needed" value={formatDate(pr.date_needed)} />
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  {['super_admin', 'ceo'].includes(user?.role) && (
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          disabled={processingId === pr.id}
-                          onClick={() => handleDeletePaymentRequest(pr.id)}
-                          className="px-2"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => handleViewPayment(pr)} className="px-2">
-                    <Eye className="w-4 h-4" />
-                  </Button>
+                  {renderReviewButton({ canReview: false, onClick: () => handleViewPayment(pr) })}
                   <button onClick={() => setExpandedId(expandedId === pr.id ? null : pr.id)} className="text-gray-400 hover:text-gray-600">
                     {expandedId === pr.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
@@ -2589,9 +2335,11 @@ const Approvals = () => {
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">DV Number</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Source Ref</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Supplier/Payee</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -2610,39 +2358,16 @@ const Approvals = () => {
                             return ref.type ? <span><span className="text-xs text-gray-400">{ref.type}</span> {ref.num}</span> : ref.num;
                           })()}
                         </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(dv)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{getDVSupplierName(dv)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(dv.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(dv)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === dv.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveDV(dv.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewDV(dv); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === dv.id ? null : dv.id); }}
-                            >
-                              {expandedId === dv.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(dv.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewDV(dv) })}</td>
                       </tr>
                       {expandedId === dv.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Particulars</p>
@@ -2689,31 +2414,16 @@ const Approvals = () => {
                             return ref.type ? <span><span className="text-xs text-gray-400">{ref.type}</span> {ref.num}</span> : ref.num;
                           })()}
                         </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(dv)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{getDVSupplierName(dv)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(dv.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(dv)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewDV(dv); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === dv.id ? null : dv.id); }}
-                            >
-                              {expandedId === dv.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(dv.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewDV(dv) })}</td>
                       </tr>
                       {expandedId === dv.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Particulars</p>
@@ -2749,7 +2459,7 @@ const Approvals = () => {
                   {((dvSubTab === 'pending' && pendingDVs.length === 0) ||
                     (dvSubTab === 'approved' && approvedDVs.length === 0)) && (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-gray-500">
+              <td colSpan="8" className="py-8 text-center text-gray-500">
                         No {dvSubTab === 'pending' ? 'pending' : 'approved'} disbursement vouchers
                       </td>
                     </tr>
@@ -2844,9 +2554,11 @@ const Approvals = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">SR Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Purpose</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -2859,57 +2571,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === sr.id ? null : sr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{sr.sr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(sr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{sr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(sr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(sr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === sr.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveSR(sr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === sr.id}
-                              onClick={(e) => { e.stopPropagation(); handleRejectSR(sr.id); }}
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === sr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteSR(sr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewSR(sr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === sr.id ? null : sr.id); }}
-                            >
-                              {expandedId === sr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(sr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewSR(sr) })}</td>
                       </tr>
                       {expandedId === sr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Service Type</p>
@@ -2950,49 +2621,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === sr.id ? null : sr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{sr.sr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(sr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{sr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(sr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(sr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === sr.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveSR(sr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === sr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteSR(sr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewSR(sr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === sr.id ? null : sr.id); }}
-                            >
-                              {expandedId === sr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(sr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewSR(sr) })}</td>
                       </tr>
                       {expandedId === sr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Service Type</p>
@@ -3033,41 +2671,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === sr.id ? null : sr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{sr.sr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(sr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{sr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(sr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(sr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === sr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteSR(sr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewSR(sr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === sr.id ? null : sr.id); }}
-                            >
-                              {expandedId === sr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(sr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewSR(sr) })}</td>
                       </tr>
                       {expandedId === sr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Service Type</p>
@@ -3104,7 +2717,7 @@ const Approvals = () => {
                     (srSubTab === 'on-hold' && onHoldServiceRequests.length === 0) ||
                     (srSubTab === 'approved' && approvedServiceRequests.length === 0)) && (
                     <tr>
-                      <td colSpan="5" className="py-8 text-center text-gray-500">
+                      <td colSpan="7" className="py-8 text-center text-gray-500">
                         No {srSubTab === 'pending' ? 'pending' : srSubTab === 'on-hold' ? 'on hold' : 'approved'} service requests
                       </td>
                     </tr>
@@ -3199,9 +2812,11 @@ const Approvals = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">CR Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Purpose</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -3214,65 +2829,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === cr.id ? null : cr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{cr.cr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(cr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{cr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(cr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(cr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === cr.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveCR(cr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={processingId === cr.id}
-                              onClick={(e) => { e.stopPropagation(); handleHoldCR(cr.id); }}
-                            >
-                              <Clock className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === cr.id}
-                              onClick={(e) => { e.stopPropagation(); handleRejectCR(cr.id); }}
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === cr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCR(cr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewCR(cr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === cr.id ? null : cr.id); }}
-                            >
-                              {expandedId === cr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(cr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewCR(cr) })}</td>
                       </tr>
                       {expandedId === cr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Project</p>
@@ -3319,49 +2885,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === cr.id ? null : cr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{cr.cr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(cr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{cr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(cr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(cr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === cr.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveCR(cr.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === cr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCR(cr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewCR(cr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === cr.id ? null : cr.id); }}
-                            >
-                              {expandedId === cr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(cr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewCR(cr) })}</td>
                       </tr>
                       {expandedId === cr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Project</p>
@@ -3408,41 +2941,16 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === cr.id ? null : cr.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{cr.cr_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(cr)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{cr.purpose || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(cr.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(cr)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            {['super_admin', 'ceo'].includes(user?.role) && (
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                disabled={processingId === cr.id}
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCR(cr.id); }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewCR(cr); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === cr.id ? null : cr.id); }}
-                            >
-                              {expandedId === cr.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(cr.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewCR(cr) })}</td>
                       </tr>
                       {expandedId === cr.id && (
                         <tr>
-                          <td colSpan="5" className="bg-gray-50 p-4">
+                          <td colSpan="7" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Project</p>
@@ -3485,7 +2993,7 @@ const Approvals = () => {
                     (crSubTab === 'on-hold' && onHoldCashRequests.length === 0) ||
                     (crSubTab === 'approved' && approvedCashRequests.length === 0)) && (
                     <tr>
-                      <td colSpan="5" className="py-8 text-center text-gray-500">
+                      <td colSpan="7" className="py-8 text-center text-gray-500">
                         No {crSubTab === 'pending' ? 'pending' : crSubTab === 'on-hold' ? 'on hold' : 'approved'} cash requests
                       </td>
                     </tr>
@@ -3580,10 +3088,12 @@ const Approvals = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">PO Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Payee Name</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Project</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -3596,48 +3106,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.payee_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePaymentOrder(po.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleHoldPaymentOrder(po.id); }}
-                            >
-                              <Clock className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPaymentOrder(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPaymentOrder(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Payee Address</p>
@@ -3684,40 +3163,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.payee_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === po.id}
-                              onClick={(e) => { e.stopPropagation(); handleApprovePaymentOrder(po.id); }}
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPaymentOrder(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => handleViewPaymentOrder(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Payee Address</p>
@@ -3764,32 +3220,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === po.id ? null : po.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{po.po_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(po)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.payee_name || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{po.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(po.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(po)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleViewPaymentOrder(po); }}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === po.id ? null : po.id); }}
-                            >
-                              {expandedId === po.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(po.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => handleViewPaymentOrder(po) })}</td>
                       </tr>
                       {expandedId === po.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="grid grid-cols-3 gap-4">
                               <div>
                                 <p className="text-xs text-gray-500 uppercase">Payee Address</p>
@@ -3832,7 +3273,7 @@ const Approvals = () => {
                     (paymentOrderSubTab === 'on-hold' && onHoldPaymentOrders.length === 0) ||
                     (paymentOrderSubTab === 'approved' && approvedPaymentOrders.length === 0)) && (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-gray-500">
+                      <td colSpan="8" className="py-8 text-center text-gray-500">
                         No {paymentOrderSubTab === 'pending' ? 'pending' : paymentOrderSubTab === 'on-hold' ? 'on hold' : 'approved'} payment orders
                       </td>
                     </tr>
@@ -3927,10 +3368,12 @@ const Approvals = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">RMB Number</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Requester</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Payee</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Project</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Amount</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Date Needed</th>
                     <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -3943,43 +3386,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{r.rmb_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(r)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.payee}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(r.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(r)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === r.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveReimbursement(r.id, 'approved'); }}
-                              title="Approve"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              disabled={processingId === r.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveReimbursement(r.id, 'rejected'); }}
-                              title="Reject"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === r.id ? null : r.id); }}
-                            >
-                              {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(r.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => setExpandedId(expandedId === r.id ? null : r.id) })}</td>
                       </tr>
                       {expandedId === r.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -3990,10 +3407,7 @@ const Approvals = () => {
                                   <p className="text-xs text-gray-500 uppercase">Order Number</p>
                                   <p className="text-sm text-gray-900">{r.order_number || '-'}</p>
                                 </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 uppercase">Date Needed</p>
-                                  <p className="text-sm text-gray-900">{r.date_needed ? new Date(r.date_needed).toLocaleDateString() : '-'}</p>
-                                </div>
+                                <div><p className="text-xs text-gray-500 uppercase">Date Needed</p><p className="text-sm text-gray-900">{formatDate(r.date_needed)}</p></div>
                                 <div>
                                   <p className="text-xs text-gray-500 uppercase">Purpose</p>
                                   <p className="text-sm text-gray-900">{r.purpose || '-'}</p>
@@ -4005,6 +3419,10 @@ const Approvals = () => {
                                   <p className="text-sm text-gray-900">{r.remarks}</p>
                                 </div>
                               )}
+                              <div className="flex justify-end gap-2 border-t border-gray-200 pt-3">
+                                <Button variant="danger" size="sm" disabled={processingId === r.id} onClick={() => handleApproveReimbursement(r.id, 'rejected')}>Reject</Button>
+                                <Button variant="primary" size="sm" disabled={processingId === r.id} onClick={() => handleApproveReimbursement(r.id, 'approved')}>Approve</Button>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -4020,34 +3438,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{r.rmb_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(r)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.payee}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(r.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(r)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="success"
-                              size="sm"
-                              disabled={processingId === r.id}
-                              onClick={(e) => { e.stopPropagation(); handleApproveReimbursement(r.id, 'approved'); }}
-                              title="Approve"
-                            >
-                              <CheckCircle className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === r.id ? null : r.id); }}
-                            >
-                              {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(r.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: true, onClick: () => setExpandedId(expandedId === r.id ? null : r.id) })}</td>
                       </tr>
                       {expandedId === r.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -4058,10 +3459,7 @@ const Approvals = () => {
                                   <p className="text-xs text-gray-500 uppercase">Order Number</p>
                                   <p className="text-sm text-gray-900">{r.order_number || '-'}</p>
                                 </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 uppercase">Date Needed</p>
-                                  <p className="text-sm text-gray-900">{r.date_needed ? new Date(r.date_needed).toLocaleDateString() : '-'}</p>
-                                </div>
+                                <div><p className="text-xs text-gray-500 uppercase">Date Needed</p><p className="text-sm text-gray-900">{formatDate(r.date_needed)}</p></div>
                                 <div>
                                   <p className="text-xs text-gray-500 uppercase">Purpose</p>
                                   <p className="text-sm text-gray-900">{r.purpose || '-'}</p>
@@ -4073,6 +3471,9 @@ const Approvals = () => {
                                   <p className="text-sm text-gray-900">{r.remarks}</p>
                                 </div>
                               )}
+                              <div className="flex justify-end border-t border-gray-200 pt-3">
+                                <Button variant="primary" size="sm" disabled={processingId === r.id} onClick={() => handleApproveReimbursement(r.id, 'approved')}>Approve</Button>
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -4088,25 +3489,17 @@ const Approvals = () => {
                         onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
                       >
                         <td className="py-3 px-4 text-sm font-medium text-gray-900">{r.rmb_number}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{getRequestRequester(r)}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.payee}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{r.project || '-'}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{formatCurrency(r.amount)}</td>
                         <td className="py-3 px-4">{renderStatusWithLock(r)}</td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === r.id ? null : r.id); }}
-                            >
-                              {expandedId === r.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{formatDate(r.date_needed)}</td>
+                        <td className="py-3 px-4">{renderReviewButton({ canReview: false, onClick: () => setExpandedId(expandedId === r.id ? null : r.id) })}</td>
                       </tr>
                       {expandedId === r.id && (
                         <tr>
-                          <td colSpan="6" className="bg-gray-50 p-4">
+                          <td colSpan="8" className="bg-gray-50 p-4">
                             <div className="space-y-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -4117,10 +3510,7 @@ const Approvals = () => {
                                   <p className="text-xs text-gray-500 uppercase">Order Number</p>
                                   <p className="text-sm text-gray-900">{r.order_number || '-'}</p>
                                 </div>
-                                <div>
-                                  <p className="text-xs text-gray-500 uppercase">Date Needed</p>
-                                  <p className="text-sm text-gray-900">{r.date_needed ? new Date(r.date_needed).toLocaleDateString() : '-'}</p>
-                                </div>
+                                <div><p className="text-xs text-gray-500 uppercase">Date Needed</p><p className="text-sm text-gray-900">{formatDate(r.date_needed)}</p></div>
                                 <div>
                                   <p className="text-xs text-gray-500 uppercase">Purpose</p>
                                   <p className="text-sm text-gray-900">{r.purpose || '-'}</p>
@@ -4143,7 +3533,7 @@ const Approvals = () => {
                     (rmbSubTab === 'on-hold' && onHoldReimbursements.length === 0) ||
                     (rmbSubTab === 'approved' && approvedReimbursements.length === 0)) && (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-gray-500">
+                      <td colSpan="8" className="py-8 text-center text-gray-500">
                         No {rmbSubTab === 'pending' ? 'pending' : rmbSubTab === 'on-hold' ? 'on hold' : 'approved'} reimbursements
                       </td>
                     </tr>
@@ -4167,6 +3557,19 @@ const Approvals = () => {
           processingId={processingId}
         />
       )}
+
+      <PettyCashPreviewModal
+        request={previewPettyCashRequest}
+        onClose={() => setPreviewPettyCashRequest(null)}
+        actions={canReviewPettyCash(previewPettyCashRequest) && <>
+          <Button variant="danger" onClick={() => reviewPettyCashRequest('rejected')} disabled={pettyCashProcessing}>
+            {pettyCashProcessing ? 'Processing...' : 'Reject'}
+          </Button>
+          <Button variant="primary" onClick={() => reviewPettyCashRequest('approved')} disabled={pettyCashProcessing}>
+            {pettyCashProcessing ? 'Processing...' : 'Approve'}
+          </Button>
+        </>}
+      />
 
       {/* PO Preview Modal */}
       {previewPO && (
@@ -4210,7 +3613,7 @@ const Approvals = () => {
           loading={loadingPreview}
           onClose={() => setPreviewSR(null)}
           onApprove={handleApproveSR}
-          onHold={handleRejectSR}
+          onReject={handleRejectSR}
           processingId={processingId}
         />
       )}
@@ -4222,6 +3625,7 @@ const Approvals = () => {
           loading={loadingPreview}
           onClose={() => setPreviewCR(null)}
           onApprove={handleApproveCR}
+          onReject={handleRejectCR}
           onHold={handleHoldCR}
           processingId={processingId}
         />

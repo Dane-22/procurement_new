@@ -4,27 +4,24 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { useAuth } from '../../contexts/AuthContext';
 import { reimbursementService } from '../../services/reimbursements';
+import LiveConnectionStatus from '../ui/LiveConnectionStatus';
 
 const Layout = ({ user, notifications, setNotifications, onLogout, children }) => {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const canReviewReimbursements = ['super_admin', 'ceo'].includes(user?.role);
 
   useEffect(() => {
+    if (!canReviewReimbursements) return;
+
     const fetchPendingCount = async () => {
-      console.log('Checking user for pending count fetch:', user);
-      if (['super_admin', 'ceo'].includes(user?.role)) {
-        try {
-          console.log('Fetching pending count...');
-          const data = await reimbursementService.getPendingCount();
-          console.log('Pending count received:', data);
-          setPendingCount(data.count);
-        } catch (err) {
-          console.error('Failed to fetch pending count:', err);
-        }
-      } else {
-        console.log('Not super admin, skipping pending count fetch. Role:', user?.role);
+      try {
+        const data = await reimbursementService.getPendingCount();
+        setPendingCount(data.count);
+      } catch (err) {
+        console.error('Failed to fetch pending count:', err);
       }
     };
 
@@ -32,11 +29,11 @@ const Layout = ({ user, notifications, setNotifications, onLogout, children }) =
     // Refresh every 30 seconds
     const interval = setInterval(fetchPendingCount, 30000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [canReviewReimbursements]);
 
   useEffect(() => {
     const handleReimbursementsChanged = async () => {
-      if (!['super_admin', 'ceo'].includes(user?.role)) return;
+      if (!canReviewReimbursements) return;
       try {
         const data = await reimbursementService.getPendingCount();
         setPendingCount(data.count);
@@ -49,7 +46,7 @@ const Layout = ({ user, notifications, setNotifications, onLogout, children }) =
     return () => {
       window.removeEventListener('reimbursements:changed', handleReimbursementsChanged);
     };
-  }, [user]);
+  }, [canReviewReimbursements]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -91,6 +88,7 @@ const Layout = ({ user, notifications, setNotifications, onLogout, children }) =
         />
         
         {/* Page content */}
+        <LiveConnectionStatus />
         <main className="flex-1 overflow-auto p-4 lg:p-6">
           {children}
         </main>

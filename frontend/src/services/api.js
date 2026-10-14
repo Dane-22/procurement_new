@@ -4,9 +4,10 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 const cache = new Map();
 const CACHE_TTL = 30000;
+const canCache = config => config.method === 'get' && config.cache === true && config.url === '/workflows/reference/options';
 
 const getCacheKey = (config) => {
-  return `${config.method}:${config.url}:${JSON.stringify(config.params || {})}`;
+  return `${localStorage.getItem('token') || 'anonymous'}:${config.method}:${config.url}:${JSON.stringify(config.params || {})}`;
 };
 
 const getCachedResponse = (key) => {
@@ -20,6 +21,7 @@ const getCachedResponse = (key) => {
 
 const setCachedResponse = (key, data) => {
   cache.set(key, { data, timestamp: Date.now() });
+  if (cache.size > 100) cache.delete(cache.keys().next().value);
 };
 
 const api = axios.create({
@@ -32,12 +34,13 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    config.requestIdentity = token;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     
     // Skip cache if explicitly disabled
-    if (config.method === 'get' && config.cache !== false) {
+    if (canCache(config)) {
       const cacheKey = getCacheKey(config);
       const cached = getCachedResponse(cacheKey);
       if (cached) {
@@ -61,7 +64,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     // Skip cache if explicitly disabled
-    if (response.config.method === 'get' && response.config.cache !== false) {
+    if (response.config.requestIdentity !== localStorage.getItem('token') && !response.config.url.includes('/auth/login')) {
+      return Promise.reject(new axios.CanceledError('User identity changed during request'));
+    }
+    if (canCache(response.config)) {
       const cacheKey = getCacheKey(response.config);
       setCachedResponse(cacheKey, response.data);
     }

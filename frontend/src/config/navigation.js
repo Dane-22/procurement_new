@@ -19,6 +19,24 @@ import {
 
 // Navigation configuration - centralized for easy management
 export const navigationItems = [
+  {
+    path: '/dashboard/workflows',
+    label: 'Request Workflows',
+    icon: ClipboardCheck,
+    roles: ['engineer','procurement','admin','senior_project_manager','ceo','super_admin']
+  },
+  {
+    path: '/dashboard/service-requests',
+    label: 'Service Requests',
+    icon: ClipboardCheck,
+    roles: ['engineer','procurement','admin','senior_project_manager','ceo','super_admin']
+  },
+  {
+    path: '/dashboard/cash-requests',
+    label: 'Cash Requests',
+    icon: DollarSign,
+    roles: ['engineer','procurement','admin','senior_project_manager','ceo','super_admin']
+  },
   // Dashboard
   {
     path: '/dashboard',
@@ -40,7 +58,7 @@ export const navigationItems = [
     path: '/dashboard/purchase-requests?tab=reviews',
     label: 'For Reviews',
     icon: CheckCircle,
-    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager']
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
   },
 
   // For Admin Processing
@@ -99,21 +117,21 @@ export const navigationItems = [
     roles: ['admin', 'ceo', 'super_admin', 'senior_project_manager']
   },
 
-  // Payment Requests - TEMPORARILY COMMENTED OUT
-  // {
-  //   path: '/dashboard/payment-requests',
-  //   label: 'Payment Requests',
-  //   icon: Receipt,
-  //   roles: ['admin', 'ceo', 'super_admin']
-  // },
+  // Payment Requests
+  {
+    path: '/dashboard/payment-requests',
+    label: 'Payment Requests',
+    icon: Receipt,
+    roles: ['engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
+  },
 
-  // Payment Orders - TEMPORARILY COMMENTED OUT
-  // {
-  //   path: '/dashboard/payment-orders',
-  //   label: 'Payment Orders',
-  //   icon: DollarSign,
-  //   roles: ['admin', 'ceo', 'super_admin']
-  // },
+  // Payment Orders
+  {
+    path: '/dashboard/payment-orders',
+    label: 'Payment Orders',
+    icon: DollarSign,
+    roles: ['engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
+  },
 
   // Disbursement Vouchers - TEMPORARILY COMMENTED OUT
   // {
@@ -131,13 +149,19 @@ export const navigationItems = [
   //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
   // },
 
-  // Cash Requests - TEMPORARILY COMMENTED OUT
-  // {
-  //   path: '/dashboard/cash-requests',
-  //   label: 'Cash Requests',
-  //   icon: DollarSign,
-  //   roles: ['engineer', 'procurement', 'admin', 'ceo', 'super_admin']
-  // },
+  // Cash Requests
+  {
+    path: '/dashboard/cash-requests',
+    label: 'Cash Requests',
+    icon: DollarSign,
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
+  },
+  {
+    path: '/dashboard/petty-cash-requests',
+    label: 'Petty Cash Requests',
+    icon: Receipt,
+    roles: ['engineer', 'procurement', 'admin', 'senior_project_manager', 'ceo', 'super_admin']
+  },
 
   // Reimbursements - TEMPORARILY COMMENTED OUT
   // {
@@ -185,11 +209,11 @@ export const navigationItems = [
 export const navigationGroups = [
   {
     title: null,
-    items: ['/dashboard', '/dashboard/purchase-requests', '/dashboard/purchase-requests?tab=reviews', '/dashboard/purchase-requests?tab=admin_processing'] // service-requests temporarily commented out
+    items: ['/dashboard', '/dashboard/workflows', '/dashboard/purchase-requests', '/dashboard/purchase-requests?tab=reviews', '/dashboard/purchase-requests?tab=admin_processing', '/dashboard/service-requests']
   },
   {
     title: 'Orders & Vouchers',
-    items: ['/dashboard/purchase-orders'] // payment-requests, payment-orders, disbursement-vouchers, order-numbers temporarily commented out
+    items: ['/dashboard/purchase-orders', '/dashboard/payment-requests', '/dashboard/payment-orders']
   },
   {
     title: 'Items',
@@ -197,7 +221,7 @@ export const navigationGroups = [
   },
   {
     title: 'Finance',
-    items: [] // cash-requests, reimbursements temporarily commented out
+    items: ['/dashboard/cash-requests', '/dashboard/petty-cash-requests']
   },
   {
     title: 'Administration',

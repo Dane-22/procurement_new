@@ -1,4 +1,15 @@
 services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set Redis password}", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set Redis password}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
   db:
     image: mariadb:10.4
     container_name: procurement_db
@@ -28,6 +39,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      REDIS_URL: ${REDIS_URL:?set authenticated Redis URL}
       PORT: 5000
       DB_HOST: db
       DB_PORT: 3306
@@ -47,6 +59,7 @@ services:
       - "127.0.0.1:5001:5000"
     volumes:
       - backend_uploads:/app/uploads
+      - backend_private:/app/private
     depends_on:
       db:
         condition: service_healthy
@@ -76,3 +89,4 @@ services:
 volumes:
   db_data:
   backend_uploads:
+  backend_private:

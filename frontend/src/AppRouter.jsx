@@ -6,7 +6,9 @@ import Login from './components/Login'
 import App from './App'
 
 const AppRouter = () => {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+
+  if (loading) return null
 
   return (
     <Routes>

@@ -1,9 +1,10 @@
-import api from './api';
+import api, { clearApiCache } from './api';
 
 export const authService = {
   login: async (employee_no, password) => {
     const response = await api.post('/auth/login', { employee_no, password });
     const { token, user } = response.data;
+    clearApiCache();
     
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
@@ -16,6 +17,7 @@ export const authService = {
   },
 
   logout: () => {
+    clearApiCache();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
   },

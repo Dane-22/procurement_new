@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { purchaseOrderService } from '../../services/purchaseOrders'
+import { workflowService } from '../../services/requestWorkflows'
 import { purchaseRequestService } from '../../services/purchaseRequests'
 import { serviceRequestService } from '../../services/serviceRequests'
 import { supplierService } from '../../services/suppliers'
 import { ChevronUp, ChevronDown, FileSpreadsheet, Plus, X, Eye, Edit } from 'lucide-react'
 import POPreviewModal from './POPreviewModal'
+import { useLiveWorkflowRefresh } from '../../hooks/useLiveWorkflowRefresh'
 
 // UI Components
 const Card = ({ children, className = '' }) => (
@@ -216,6 +218,8 @@ const PurchaseOrders = () => {
     }
   }
 
+  useLiveWorkflowRefresh(fetchPurchaseOrders,'po')
+
   const openCreateModal = async () => {
     setShowCreateModal(true)
     setLoadingForm(true)
@@ -232,7 +236,7 @@ const PurchaseOrders = () => {
         setPrSearchResults(filterPRsByQuery(eligiblePrs, prSearchQuery))
         setShowPrResults(true)
       }
-      setSrs(srsData.filter(sr => sr.status === 'Approved' || sr.status === 'For Super Admin Final Approval'))
+      setSrs(srsData.filter(sr => sr.status === 'Approved'))
       // Backend returns a paginated object { suppliers: [...], page, pageSize, total }
       const suppliersList = Array.isArray(suppliersData) ? suppliersData : (suppliersData?.suppliers ?? [])
       setSuppliers(suppliersList)
@@ -367,7 +371,7 @@ const PurchaseOrders = () => {
     if (!orderNumber || !String(orderNumber).trim()) { alert('Order Number is required from the selected source document'); return }
 
     let normalizedItems = []
-    if (sourceType === 'pr') {
+    if (sourceType === 'pr' || sourceType === 'sr') {
       normalizedItems = items.map((item) => ({
         item_id: Number(item.item_id),
         quantity: Number(item.quantity),
@@ -402,16 +406,20 @@ const PurchaseOrders = () => {
         items: normalizedItems,
         save_as_draft: saveAsDraft
       }
+      let documentId=editingId;
       if (editingId) {
         const poToEdit = purchaseOrders.find(p => p.id === editingId);
         if (poToEdit && (poToEdit.status === 'Rejected' || poToEdit.status === 'Cancelled' || poToEdit.status === 'On Hold')) {
-            await purchaseOrderService.resubmit(editingId, poData);
+            await workflowService.action('po',editingId,'withdraw');
+            await purchaseOrderService.update(editingId,poData);
         } else {
             await purchaseOrderService.update(editingId, poData);
         }
       } else {
-        await purchaseOrderService.create(poData);
+        const created=await purchaseOrderService.create(poData);
+        documentId=created.poId;
       }
+      if(!saveAsDraft)await workflowService.action('po',documentId,'submit');
       await fetchPurchaseOrders()
       closeCreateModal()
       alert(saveAsDraft ? 'Saved as draft!' : (editingId ? 'Purchase Order updated successfully!' : 'Purchase Order created successfully and is pending approval!'))
@@ -722,7 +730,7 @@ const PurchaseOrders = () => {
                           setProject('')
                           setOrderNumber('')
                           setInheritedPaymentTerm('')
-                          setItems([])
+                          setItems([{ item_id: '', quantity: 1, unit_price: 0 }])
                         }}
                         className="mr-2"
                       />
@@ -802,7 +810,8 @@ const PurchaseOrders = () => {
                       setSelectedSR(e.target.value)
                       const sr = srs.find(s => s.id === parseInt(e.target.value))
                       if (sr) {
-                        setProject(sr.purpose || '')
+                        setProject(sr.project || '')
+                        setItems([{item_id:'',quantity:sr.quantity || 1,unit_price:sr.amount || 0}])
                         setSelectedSupplier(sr.supplier_id || '')
                         setOrderNumber(sr.order_number || '')
                       } else {
@@ -868,10 +877,9 @@ const PurchaseOrders = () => {
                   <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows="2" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500" />
                 </div>
 
-                {sourceType === 'pr' ? (
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">Items</label>
+                      <label className="block text-sm font-medium text-gray-700">{sourceType === 'sr' ? 'Service catalog lines (choose the service item ID)' : 'Items'}</label>
                       <Button type="button" variant="secondary" size="sm" onClick={addItem}>
                         <Plus className="w-4 h-4 mr-1" /> Add Item
                       </Button>
@@ -889,7 +897,7 @@ const PurchaseOrders = () => {
                           <input type="hidden" value={item.item_id} />
                         </div>
                         <div className="w-24">
-                          <input type="number" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" min="1" required />
+                          <input type="number" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" min="0.01" step="0.01" required />
                         </div>
                         <div className="w-32">
                           <input type="number" placeholder="Unit Price" value={item.unit_price} onChange={(e) => updateItem(index, 'unit_price', e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" min="0" step="0.01" required />
@@ -900,11 +908,6 @@ const PurchaseOrders = () => {
                     ))}
                     <div className="text-right font-semibold text-lg mt-2">Total: {formatCurrency(calculateTotal())}</div>
                   </div>
-                ) : (
-                  <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                    Line items are not required for Service Request source. Amount will be taken from the selected service request.
-                  </div>
-                )}
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
                   <Button type="button" variant="secondary" onClick={closeCreateModal}>Cancel</Button>

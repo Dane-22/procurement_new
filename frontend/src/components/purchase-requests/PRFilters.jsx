@@ -2,6 +2,7 @@ import React from 'react';
 import { Search, X } from 'lucide-react';
 import Button from '../ui/Button';
 import { Card } from '../ui/Card';
+import { displayReviewStatus } from '../../utils/reviewLabels';
 
 export const PRFilters = ({
   searchQuery, setSearchQuery, commitSearchToUrl,
@@ -38,7 +39,7 @@ export const PRFilters = ({
             >
               <option value="ALL">All statuses</option>
               {STATUS_FILTER_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{displayReviewStatus(s)}</option>
               ))}
             </select>
 

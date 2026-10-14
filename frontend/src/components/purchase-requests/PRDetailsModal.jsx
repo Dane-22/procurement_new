@@ -95,7 +95,7 @@ const getReviewerRoleLabel = (role) => {
     admin: 'Admin',
     procurement: 'Procurement',
     super_admin: 'Super Admin',
-    senior_project_manager: 'Senior Project Manager'
+    senior_project_manager: 'Senior Project Engineer'
   };
   return labels[role] || 'Reviewer';
 };
@@ -113,7 +113,7 @@ const getCurrentReviewStage = (status, requesterRole) => {
     'For Engineer Review': { role: 'engineer', label: 'Engineer review' },
     'For Admin Review': { role: 'admin', label: 'Admin review' },
     'For Procurement Review': { role: 'procurement', label: 'Procurement review' },
-    'For Senior Project Manager Review': { role: 'senior_project_manager', label: 'Senior Project Manager review' },
+    'For Senior Project Manager Review': { role: 'senior_project_manager', label: 'Senior Project Engineer review' },
     'For Super Admin Final Approval': { role: ['super_admin', 'ceo'], label: 'Super Admin review' }
   };
 

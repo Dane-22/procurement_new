@@ -75,12 +75,16 @@ router.get('/', authenticate, async (req, res) => {
              sr.sr_number,
              COALESCE(pr.pr_number, sr.sr_number) as source_number,
              e.first_name as prepared_by_first_name,
-             e.last_name as prepared_by_last_name
+             e.last_name as prepared_by_last_name,
+             requester.first_name as requester_first_name,
+             requester.last_name as requester_last_name,
+             COALESCE(pr.date_needed, sr.date_needed) as date_needed
       FROM purchase_orders po
       LEFT JOIN suppliers s ON po.supplier_id = s.id
       LEFT JOIN purchase_requests pr ON po.purchase_request_id = pr.id
       LEFT JOIN service_requests sr ON po.service_request_id = sr.id
       LEFT JOIN employees e ON po.prepared_by = e.id
+      LEFT JOIN employees requester ON requester.id = COALESCE(pr.requested_by, sr.requested_by)
     `;
     
     const params = [];
@@ -274,7 +278,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       }
       sourceOrderNumber = prDetails.order_number || null;
     } else if (hasSRSource) {
-      // Service Requests always create Payment Orders
+      // SR-based POs have independent approval and line fulfillment.
       const [srs] = await db.query(
         'SELECT sr_number, supplier_id as sr_supplier_id, order_number, amount, project FROM service_requests WHERE id = ?',
         [service_request_id]
@@ -283,7 +287,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
         return res.status(404).json({ message: 'Service request not found' });
       }
       srDetails = srs[0];
-      poType = 'payment_order';
+      poType = 'purchase_order';
       if (!finalSupplierId && srDetails.sr_supplier_id) {
         finalSupplierId = srDetails.sr_supplier_id;
       }

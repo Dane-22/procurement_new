@@ -259,6 +259,9 @@ router.get('/', authenticate, async (req, res) => {
              prq.pr_number as payment_request_pr_number,
              e.first_name as prepared_by_first_name,
              e.last_name as prepared_by_last_name,
+             requester.first_name as requester_first_name,
+             requester.last_name as requester_last_name,
+             COALESCE(pr.date_needed, sr.date_needed, cr.date_needed, prq_pr.date_needed, sr2.date_needed, prq_cr.date_needed) as date_needed,
              accounting.first_name as accounting_first_name,
              accounting.last_name as accounting_last_name,
              manager.first_name as manager_first_name,
@@ -270,8 +273,11 @@ router.get('/', authenticate, async (req, res) => {
       LEFT JOIN service_requests sr ON dv.service_request_id = sr.id
       LEFT JOIN cash_requests cr ON dv.cash_request_id = cr.id
       LEFT JOIN payment_requests prq ON dv.payment_request_id = prq.id
+      LEFT JOIN purchase_requests prq_pr ON prq.purchase_request_id = prq_pr.id
       LEFT JOIN service_requests sr2 ON prq.service_request_id = sr2.id
+      LEFT JOIN cash_requests prq_cr ON prq.cash_request_id = prq_cr.id
       LEFT JOIN employees e ON dv.prepared_by = e.id
+      LEFT JOIN employees requester ON requester.id = COALESCE(pr.requested_by, sr.requested_by, cr.requested_by, prq_pr.requested_by, sr2.requested_by, prq_cr.requested_by, dv.prepared_by)
       LEFT JOIN employees accounting ON dv.certified_by_accounting = accounting.id
       LEFT JOIN employees manager ON dv.certified_by_manager = manager.id
     `;

@@ -6,6 +6,7 @@ import { reimbursementService } from '../services/reimbursements'
 import { supplierService } from '../services/suppliers'
 import { ChevronUp, ChevronDown, Plus, X, Download, Eye } from 'lucide-react'
 import POPreviewModal from './payment-orders/POPreviewModal'
+import { useAuth } from '../contexts/AuthContext'
 
 // Local Card component
 const Card = ({ children, className = '' }) => (
@@ -111,6 +112,8 @@ const StatusBadge = ({ status }) => {
 }
 
 const PaymentOrders = () => {
+  const { user } = useAuth()
+  const canCreatePaymentOrder = ['engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'].includes(user?.role)
   const [paymentOrders, setPaymentOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -171,17 +174,18 @@ const PaymentOrders = () => {
     setLoadingForm(true)
     try {
       const [suppliersData, srsData, crsData, reimbursementsData] = await Promise.all([
-        supplierService.getAll(),
+        supplierService.getAllForSelect(),
         serviceRequestService.getAll(),
         cashRequestService.getAll(),
         reimbursementService.getAll()
       ])
+      const ownSource = (source) => user?.role !== 'engineer' || Number(source.requested_by) === Number(user?.id)
       // Show approved Service Requests with sr_type = 'payment_order' (payment order type)
-      setServiceRequests(srsData.filter(sr => sr.status === 'Approved' && sr.sr_type === 'payment_order'))
+      setServiceRequests(srsData.filter(sr => ownSource(sr) && sr.status === 'Approved' && sr.sr_type === 'payment_order'))
       // Show approved Cash Requests with cr_type = 'payment_order'
-      setCashRequests(crsData.filter(cr => cr.status === 'Approved' && cr.cr_type === 'payment_order'))
+      setCashRequests(crsData.filter(cr => ownSource(cr) && cr.status === 'Approved' && cr.cr_type === 'payment_order'))
       // Show approved Reimbursements with status = 'For Purchase'
-      setReimbursements(reimbursementsData.filter(r => r.status === 'For Purchase'))
+      setReimbursements(reimbursementsData.filter(r => ownSource(r) && r.status === 'For Purchase'))
       setSuppliers(suppliersData)
     } catch (err) {
       console.error('Failed to load data', err)
@@ -372,10 +376,12 @@ const PaymentOrders = () => {
           <div className="text-sm text-gray-500">
             {paymentOrders.length} Payment Order{paymentOrders.length !== 1 ? 's' : ''} total
           </div>
-          <Button onClick={openCreateModal}>
-            <Plus className="w-4 h-4 mr-1" />
-            Create Payment Order
-          </Button>
+          {canCreatePaymentOrder && (
+            <Button onClick={openCreateModal}>
+              <Plus className="w-4 h-4 mr-1" />
+              Create Payment Order
+            </Button>
+          )}
         </div>
       </div>
 

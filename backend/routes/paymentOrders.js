@@ -1,6 +1,6 @@
 import express from 'express';
 import db from '../config/database.js';
-import { authenticate, requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin, requireSuperAdmin, authorize } from '../middleware/auth.js';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import { resolveExcelTemplatePath } from '../utils/excelTemplatePath.js';
@@ -34,6 +34,20 @@ const generatePONumber = async () => {
   return `${prefix}-${year}-${month}-${String(sequence).padStart(3, '0')}`;
 };
 
+const engineerPaymentOrderScope = `(
+  po.requested_by = ?
+  OR EXISTS (SELECT 1 FROM service_requests source_sr WHERE source_sr.id = po.service_request_id AND source_sr.requested_by = ?)
+  OR EXISTS (SELECT 1 FROM cash_requests source_cr WHERE source_cr.id = po.cash_request_id AND source_cr.requested_by = ?)
+)`;
+
+const canEngineerViewPaymentOrder = async (paymentOrderId, engineerId) => {
+  const [rows] = await db.query(
+    `SELECT 1 FROM payment_orders po WHERE po.id = ? AND ${engineerPaymentOrderScope} LIMIT 1`,
+    [paymentOrderId, engineerId, engineerId, engineerId]
+  );
+  return rows.length > 0;
+};
+
 // Get All Payment Orders
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -41,9 +55,12 @@ router.get('/', authenticate, async (req, res) => {
     let query = `
       SELECT po.*, 
              sr.sr_number,
-             e.first_name, e.last_name
+             e.first_name, e.last_name,
+             COALESCE(sr.date_needed, cr.date_needed, r.date_needed) as date_needed
       FROM payment_orders po
       LEFT JOIN service_requests sr ON po.service_request_id = sr.id
+      LEFT JOIN cash_requests cr ON po.cash_request_id = cr.id
+      LEFT JOIN reimbursements r ON po.reimbursement_id = r.id
       LEFT JOIN employees e ON po.requested_by = e.id
       WHERE 1=1
     `;
@@ -52,6 +69,11 @@ router.get('/', authenticate, async (req, res) => {
     if (status && status !== 'all') {
       query += ' AND po.status = ?';
       params.push(status);
+    }
+
+    if (req.user.role === 'engineer') {
+      query += ` AND ${engineerPaymentOrderScope}`;
+      params.push(req.user.id, req.user.id, req.user.id);
     }
     
     query += ' ORDER BY po.created_at DESC';
@@ -81,6 +103,9 @@ router.get('/:id', authenticate, async (req, res) => {
     if (paymentOrders.length === 0) {
       return res.status(404).json({ message: 'Payment order not found' });
     }
+    if (req.user.role === 'engineer' && !(await canEngineerViewPaymentOrder(req.params.id, req.user.id))) {
+      return res.status(403).json({ message: 'Not authorized to view this payment order' });
+    }
     await assertOrderNumberUnlocked(paymentOrders[0].order_number, 'status update');
     
     const paymentOrder = paymentOrders[0];
@@ -93,8 +118,8 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Create Payment Order (admin only)
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+// Create Payment Order from an eligible source request
+router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'), async (req, res) => {
   try {
     const { service_request_id, cash_request_id, reimbursement_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, remarks } = req.body;
     
@@ -183,6 +208,10 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       sourcePurpose = rmbDetails.purpose || '';
       sourceRequestedBy = rmbDetails.requested_by;
     }
+
+    if (req.user.role === 'engineer' && Number(sourceRequestedBy) !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'Engineers can create payment orders only from their own approved requests' });
+    }
     
     const poNumber = await generatePONumber();
     
@@ -260,7 +289,6 @@ router.patch('/:id/status', authenticate, requireAdmin, async (req, res) => {
     if (paymentOrders.length === 0) {
       return res.status(404).json({ message: 'Payment order not found' });
     }
-    
     await db.query(
       'UPDATE payment_orders SET status = ?, remarks = ?, updated_at = NOW() WHERE id = ?',
       [status, remarks || null, req.params.id]
@@ -332,6 +360,9 @@ router.get('/:id/export', authenticate, async (req, res) => {
     
     if (paymentOrders.length === 0) {
       return res.status(404).json({ message: 'Payment order not found' });
+    }
+    if (req.user.role === 'engineer' && !(await canEngineerViewPaymentOrder(req.params.id, req.user.id))) {
+      return res.status(403).json({ message: 'Not authorized to export this payment order' });
     }
     
     const paymentOrder = paymentOrders[0];

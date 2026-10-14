@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate, requireAdmin, requireSuperAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin, requireSuperAdmin, authorize } from '../middleware/auth.js';
 import db from '../config/database.js';
 import { createNotification, getSuperAdmins } from '../utils/notifications.js';
 import ExcelJS from 'exceljs';
@@ -156,6 +156,21 @@ const getPaymentRequestSourceMeta = async (conn, paymentRequest, includeSchedule
   };
 };
 
+const engineerPaymentRequestScope = `(
+  pr.requested_by = ?
+  OR EXISTS (SELECT 1 FROM purchase_requests source_pr WHERE source_pr.id = pr.purchase_request_id AND source_pr.requested_by = ?)
+  OR EXISTS (SELECT 1 FROM service_requests source_sr WHERE source_sr.id = pr.service_request_id AND source_sr.requested_by = ?)
+  OR EXISTS (SELECT 1 FROM cash_requests source_cr WHERE source_cr.id = pr.cash_request_id AND source_cr.requested_by = ?)
+)`;
+
+const canEngineerViewPaymentRequest = async (paymentRequestId, engineerId) => {
+  const [rows] = await db.query(
+    `SELECT 1 FROM payment_requests pr WHERE pr.id = ? AND ${engineerPaymentRequestScope} LIMIT 1`,
+    [paymentRequestId, engineerId, engineerId, engineerId, engineerId]
+  );
+  return rows.length > 0;
+};
+
 // Get all Payment Requests
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -167,29 +182,32 @@ router.get('/', authenticate, async (req, res) => {
       SELECT pr.*, 
              p.pr_number as original_pr_number,
              sr.sr_number as original_sr_number,
+             cr.cr_number as original_cr_number,
              e.first_name as prepared_by_first_name,
-             e.last_name as prepared_by_last_name
+             e.last_name as prepared_by_last_name,
+             COALESCE(p.date_needed, sr.date_needed, cr.date_needed) as date_needed
       FROM payment_requests pr
       LEFT JOIN purchase_requests p ON pr.purchase_request_id = p.id
       LEFT JOIN service_requests sr ON pr.service_request_id = sr.id
+      LEFT JOIN cash_requests cr ON pr.cash_request_id = cr.id
       LEFT JOIN employees e ON pr.requested_by = e.id
     `;
     
     const params = [];
     
     if (req.user.role === 'engineer') {
-      query += ' WHERE pr.requested_by = ?';
-      params.push(req.user.id);
+      query += ` WHERE ${engineerPaymentRequestScope}`;
+      params.push(req.user.id, req.user.id, req.user.id, req.user.id);
     }
 
     const countQuery = `
       SELECT COUNT(*) as total
       FROM payment_requests pr
-      ${req.user.role === 'engineer' ? 'WHERE pr.requested_by = ?' : ''}
+      ${req.user.role === 'engineer' ? `WHERE ${engineerPaymentRequestScope}` : ''}
     `;
     const countParams = [];
     if (req.user.role === 'engineer') {
-      countParams.push(req.user.id);
+      countParams.push(req.user.id, req.user.id, req.user.id, req.user.id);
     }
     
     query += ' ORDER BY pr.created_at DESC LIMIT ? OFFSET ?';
@@ -240,6 +258,9 @@ router.get('/:id', authenticate, async (req, res) => {
     if (paymentRequests.length === 0) {
       return res.status(404).json({ message: 'Payment request not found' });
     }
+    if (req.user.role === 'engineer' && !(await canEngineerViewPaymentRequest(req.params.id, req.user.id))) {
+      return res.status(403).json({ message: 'Not authorized to view this payment request' });
+    }
 
     const [items] = await db.query(`
       SELECT pri.*, i.item_name as item_name, i.unit
@@ -263,8 +284,8 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// Create Payment Request (admin only)
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+// Create Payment Request from an eligible source request
+router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'), async (req, res) => {
   try {
     const { purchase_request_id, service_request_id, cash_request_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, remarks, items } = req.body;
     
@@ -285,7 +306,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     // If PR source, validate PR
     if (purchase_request_id) {
       const [prs] = await db.query(
-        `SELECT pr_number, payment_basis, requested_by, purpose, payment_terms_code, payment_terms_note, project, order_number
+        `SELECT pr_number, status, payment_basis, requested_by, purpose, payment_terms_code, payment_terms_note, project, order_number
          FROM purchase_requests
          WHERE id = ?`,
         [purchase_request_id]
@@ -298,6 +319,9 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       // Only allow non_debt PRs to become payment requests
       if (prDetails.payment_basis !== 'non_debt') {
         return res.status(400).json({ message: 'Only PRs without account can create payment requests' });
+      }
+      if (prDetails.status !== 'For Purchase') {
+        return res.status(400).json({ message: 'Only approved Purchase Requests can create payment requests' });
       }
 
       const hasTermsCode = Boolean(String(prDetails.payment_terms_code || '').trim());
@@ -368,6 +392,10 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       sourcePurpose = crDetails.purpose || sourcePurpose;
       sourceRequestedBy = crDetails.requested_by;
     }
+
+    if (req.user.role === 'engineer' && Number(sourceRequestedBy) !== Number(req.user.id)) {
+      return res.status(403).json({ message: 'Engineers can create payment requests only from their own approved requests' });
+    }
     
     // Generate Payment Request number only for PR-based requests
     let prNumber = null;
@@ -386,7 +414,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     }
 
     // Calculate total amount if not provided
-    const totalAmount = amount || items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    const totalAmount = amount || (Array.isArray(items) ? items : []).reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
 
     // Start transaction
     const connection = await db.getConnection();
@@ -395,6 +423,11 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     try {
       // Get status from request body, default to 'Pending'
       const paymentStatus = req.body.status || 'Pending';
+      if (req.user.role === 'engineer' && paymentStatus !== 'Pending') {
+        await connection.rollback();
+        connection.release();
+        return res.status(403).json({ message: 'Engineers can submit payment requests, but cannot set approval status or save drafts' });
+      }
       
       // Validate status is valid
       const validStatuses = ['Draft', 'Pending', 'For Approval', 'Approved', 'Rejected', 'On Hold', 'Cancelled'];
@@ -407,12 +440,13 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       // Create payment request
       const [paymentResult] = await connection.query(
         `INSERT INTO payment_requests 
-         (pr_number, purchase_request_id, service_request_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, status, requested_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (pr_number, purchase_request_id, service_request_id, cash_request_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, status, requested_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           prNumber,
           purchase_request_id || null,
           service_request_id || null,
+          cash_request_id || null,
           payee_name || null,
           payee_address || null,
           purpose || sourcePurpose,
@@ -641,6 +675,10 @@ router.get('/:id/export', authenticate, async (req, res) => {
 
     if (paymentRequests.length === 0) {
       return res.status(404).json({ message: 'Payment request not found' });
+    }
+
+    if (req.user.role === 'engineer' && !(await canEngineerViewPaymentRequest(req.params.id, req.user.id))) {
+      return res.status(403).json({ message: 'Not authorized to export this payment request' });
     }
 
     const paymentRequest = paymentRequests[0];

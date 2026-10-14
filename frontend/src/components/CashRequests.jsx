@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useLiveWorkflowRefresh } from '../hooks/useLiveWorkflowRefresh'
 import { useSearchParams } from 'react-router-dom'
 import { cashRequestService } from '../services/cashRequests'
 import { supplierService } from '../services/suppliers'
@@ -265,6 +266,7 @@ const CashRequests = () => {
 
       const view = user?.role === 'engineer' && urlView === 'all' ? 'all' : null
       const payload = await cashRequestService.list({
+        kind: 'standard',
         view,
         page,
         pageSize,
@@ -284,6 +286,7 @@ const CashRequests = () => {
   }, [user?.role, urlView, page, pageSize, urlStatus, urlQ])
 
   const fetchRef = useRef(null)
+  useLiveWorkflowRefresh(fetchCashRequests,'cr')
   useEffect(() => {
     fetchRef.current = fetchCashRequests
   }, [fetchCashRequests])
@@ -404,7 +407,7 @@ const CashRequests = () => {
     setLoadingForm(true)
     try {
       const [suppliersData, branchesData] = await Promise.all([
-        supplierService.getAll(),
+        supplierService.getAllForSelect(),
         projectService.getActive()
       ])
       setSuppliers(suppliersData)
@@ -446,7 +449,7 @@ const CashRequests = () => {
         : [{ payment_date: '', amount: '', note: '' }])
 
       const [suppliersData, branchesData] = await Promise.all([
-        supplierService.getAll(),
+        supplierService.getAllForSelect(),
         projectService.getActive()
       ])
       setSuppliers(suppliersData)

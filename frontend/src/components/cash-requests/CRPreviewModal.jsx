@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckCircle, Clock, FileText } from 'lucide-react';
+import { X, CheckCircle, Clock, FileText, XCircle } from 'lucide-react';
 
 // Format helpers
 const formatCurrency = (amount) => {
@@ -108,7 +108,7 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, disabled 
 };
 
 // eslint-disable-next-line no-unused-vars
-const CRPreviewModal = ({ cr, loading, onClose, onApprove, onHold, processingId, readOnly }) => {
+const CRPreviewModal = ({ cr, loading, onClose, onApprove, onReject, onHold, processingId, readOnly }) => {
   if (!cr) return null;
 
   const handleClose = (e) => {
@@ -131,6 +131,12 @@ const CRPreviewModal = ({ cr, loading, onClose, onApprove, onHold, processingId,
     if (onHold) {
       onHold(cr.id);
     }
+  };
+
+  const handleReject = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onReject?.(cr.id);
   };
 
   return (
@@ -388,8 +394,19 @@ const CRPreviewModal = ({ cr, loading, onClose, onApprove, onHold, processingId,
           >
             Close
           </Button>
-          {(cr.status === 'For Super Admin Final Approval' || cr.status === 'On Hold' || cr.status === 'Draft') && !readOnly && (
+          {(['Pending', 'For Approval', 'For Engineer Review', 'For Admin Review', 'For Senior Project Manager Review', 'For Super Admin Final Approval', 'For CEO Approval', 'On Hold', 'Draft'].includes(cr.status)) && !readOnly && (
             <>
+              {onReject && (
+                <Button
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  onClick={handleReject}
+                  disabled={processingId === cr.id}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Reject
+                </Button>
+              )}
               {onHold && (
                 <Button 
                   variant="ghost" 

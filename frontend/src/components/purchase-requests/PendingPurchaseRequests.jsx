@@ -3,6 +3,7 @@ import { socketService } from '../../services/socket'
 import { purchaseRequestService } from '../../services/purchaseRequests'
 import { ChevronUp, ChevronDown, CheckCircle, XCircle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { displayReviewStatus } from '../../utils/reviewLabels'
 
 // UI Components
 const Card = ({ children, className = '' }) => (
@@ -74,7 +75,7 @@ const StatusBadge = ({ status }) => {
 
   return (
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
-      {status}
+      {displayReviewStatus(status)}
     </span>
   )
 }

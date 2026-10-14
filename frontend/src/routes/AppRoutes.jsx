@@ -5,6 +5,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 const PaymentRequests = lazy(() => import('../components/PaymentRequests'));
 const PaymentOrders = lazy(() => import('../components/PaymentOrders'));
 const CashRequests = lazy(() => import('../components/CashRequests'));
+const PettyCashRequests = lazy(() => import('../components/PettyCashRequests'));
 const ServiceRequestsManagement = lazy(() => import('../components/service-requests/ServiceRequestsManagement'));
 const ServiceRequestApproval = lazy(() => import('../components/service-requests/ServiceRequestApproval'));
 const ReimbursementsManagement = lazy(() => import('../components/reimbursements/ReimbursementsManagement'));
@@ -13,6 +14,7 @@ const Employees = lazy(() => import('../components/employees/Employees'));
 const AuditLogs = lazy(() => import('../pages/AuditLogs'));
 
 const PurchaseOrders = lazy(() => import('../components/purchase-orders/PurchaseOrders'));
+const RequestWorkflows = lazy(() => import('../components/RequestWorkflows'));
 const PurchaseRequests = lazy(() => import('../components/purchase-requests/PurchaseRequests'));
 const PendingPurchaseRequests = lazy(() => import('../components/purchase-requests/PendingPurchaseRequests'));
 const Dashboard = lazy(() => import('../components/Dashboard'));
@@ -54,6 +56,7 @@ const AppRoutes = () => {
         
         {/* Purchase Orders */}
         <Route path="purchase-orders" element={<PurchaseOrders />} />
+        <Route path="workflows" element={<RequestWorkflows />} />
         
         {/* Approvals */}
         <Route path="approvals" element={<Approvals />} />
@@ -82,6 +85,7 @@ const AppRoutes = () => {
         
         {/* Cash Requests */}
         <Route path="cash-requests" element={<CashRequests />} />
+        <Route path="petty-cash-requests" element={<PettyCashRequests />} />
         
         {/* Reimbursements */}
         <Route path="reimbursements" element={<ReimbursementsManagement />} />

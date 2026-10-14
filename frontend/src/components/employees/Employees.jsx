@@ -29,7 +29,7 @@ const ROLE_OPTIONS = [
   { value: 'engineer', label: 'Engineer' },
   { value: 'procurement', label: 'Procurement' },
   { value: 'admin', label: 'Admin' },
-  { value: 'senior_project_manager', label: 'Senior Project Manager' },
+  { value: 'senior_project_manager', label: 'Senior Project Engineer' },
   { value: 'ceo', label: 'CEO' },
   { value: 'super_admin', label: 'Super Admin' }
 ];

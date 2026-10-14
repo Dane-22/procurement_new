@@ -7,20 +7,59 @@ import Layout from './components/layout/Layout';
 import AppRoutes from './routes/AppRoutes';
 import './App.css';
 
+let pushRegistrationPromise;
+
+const registerPushNotifications = () => {
+  if (pushRegistrationPromise) return pushRegistrationPromise;
+
+  pushRegistrationPromise = (async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
+    if (permission !== 'granted') return;
+
+    const publicKey = await notificationService.getVapidPublicKey();
+    if (!publicKey) return;
+
+    const subscription = await registration.pushManager.getSubscription()
+      || await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    await notificationService.subscribeToPush(subscription);
+  })().catch((error) => {
+    // Browser push can fail independently of the app's in-page notifications.
+    if (error.name === 'AbortError') {
+      console.warn('Browser push service is unavailable:', error.message);
+    } else {
+      console.error('Failed to register push notifications:', error);
+    }
+  }).finally(() => {
+    pushRegistrationPromise = null;
+  });
+
+  return pushRegistrationPromise;
+};
+
 function App() {
   const { user, logout, token } = useAuth();
+  const userId = user?.id;
+  const userRole = user?.role;
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
 
   // Initialize socket connection when user is authenticated
   useEffect(() => {
-    if (user && token) {
-      console.log('Connecting socket for user:', user.id, 'role:', user.role);
-      socketService.connect(token, user.id, user.role);
+    if (userId && token) {
+      console.log('Connecting socket for user:', userId, 'role:', userRole);
+      socketService.connect(token, userId, userRole);
       console.log('Socket connected?', socketService.isConnected());
 
       // Listen for real-time notifications
-      socketService.on('notification', (data) => {
+      const handleNotification = (data) => {
         console.log('Received notification:', data);
         setNotifications(prev => [data, ...prev]);
         
@@ -31,46 +70,22 @@ function App() {
         } catch (err) {
           console.error('Failed to play notification sound:', err);
         }
-      });
+      };
+      socketService.on('notification', handleNotification);
 
       // Register Push Notifications
-      const registerPush = async () => {
-        if ('serviceWorker' in navigator && 'PushManager' in window) {
-          try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
-            console.log('Service Worker registered');
-            
-            // Ask for permission
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-              const publicKey = await notificationService.getVapidPublicKey();
-              const applicationServerKey = urlBase64ToUint8Array(publicKey);
-              
-              const subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey
-              });
-              
-              await notificationService.subscribeToPush(subscription);
-              console.log('Push notification subscribed');
-            }
-          } catch (error) {
-            console.error('Error during service worker registration or push subscription:', error);
-          }
-        }
+      registerPushNotifications();
+
+      return () => {
+        socketService.off('notification', handleNotification);
+        socketService.disconnect();
       };
-      
-      registerPush();
     }
-    
-    return () => {
-      socketService.disconnect();
-    };
-  }, [user, token]);
+  }, [userId, userRole, token]);
 
   // Fetch notifications on load
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     
     const fetchNotifications = async () => {
       try {
@@ -86,7 +101,7 @@ function App() {
     // Refresh every 60 seconds
     const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [userId]);
 
   // Handle logout
   const handleLogout = () => {

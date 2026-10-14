@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLiveWorkflowRefresh } from '../../hooks/useLiveWorkflowRefresh';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Plus, 
@@ -314,6 +315,7 @@ const ServiceRequestsManagement = () => {
   }, [user?.role, urlView, page, pageSize, urlStatus, urlQ]);
 
   const fetchRef = useRef(null);
+  useLiveWorkflowRefresh(fetchServiceRequests,'sr');
   useEffect(() => {
     fetchRef.current = fetchServiceRequests;
   }, [fetchServiceRequests]);

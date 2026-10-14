@@ -19,6 +19,7 @@ export const SocketProvider = ({ children }) => {
     }
 
     const newSocket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'https://procurement.xandree.com', {
+      auth: { token: localStorage.getItem('token') },
       withCredentials: true,
       transports: ['websocket', 'polling'],
     });

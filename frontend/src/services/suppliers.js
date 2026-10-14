@@ -18,10 +18,27 @@ const dedupeRequest = async (key, requestFn) => {
 
 export const supplierService = {
   getAll: async (params = {}) => {
-    return dedupeRequest('suppliers-getAll', async () => {
+    return dedupeRequest(`suppliers-getAll:${JSON.stringify(params)}`, async () => {
       const response = await api.get('/suppliers', { params, cache: false });
       return response.data;
     });
+  },
+
+  getAllForSelect: async () => {
+    const suppliers = [];
+    let page = 1;
+    let total = 0;
+
+    do {
+      const result = await supplierService.getAll({ page, pageSize: 100 });
+      const batch = Array.isArray(result?.suppliers) ? result.suppliers : [];
+      suppliers.push(...batch);
+      total = Number(result?.total) || 0;
+      if (batch.length === 0) break;
+      page += 1;
+    } while (suppliers.length < total);
+
+    return suppliers;
   },
 
   getById: async (id) => {

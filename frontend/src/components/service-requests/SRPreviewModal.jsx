@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckCircle, Clock, FileText } from 'lucide-react';
+import { X, CheckCircle, Clock, FileText, XCircle } from 'lucide-react';
 
 // Format helpers
 const formatCurrency = (amount) => {
@@ -100,7 +100,7 @@ const Button = ({ children, variant = 'primary', size = 'md', onClick, disabled 
   );
 };
 
-const SRPreviewModal = ({ sr, onClose, onApprove, onHold, processingId, readOnly }) => {
+const SRPreviewModal = ({ sr, onClose, onApprove, onReject, onHold, processingId, readOnly }) => {
   if (!sr) return null;
 
   const handleClose = (e) => {
@@ -123,6 +123,12 @@ const SRPreviewModal = ({ sr, onClose, onApprove, onHold, processingId, readOnly
     if (onHold) {
       onHold(sr.id);
     }
+  };
+
+  const handleReject = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onReject?.(sr.id);
   };
 
   return (
@@ -336,8 +342,19 @@ const SRPreviewModal = ({ sr, onClose, onApprove, onHold, processingId, readOnly
           >
             Close
           </Button>
-          {(sr.status === 'Pending Approval' || sr.status === 'On Hold' || sr.status === 'Draft') && !readOnly && (
+          {(['Pending', 'Pending Approval', 'For Approval', 'For Super Admin Final Approval', 'On Hold', 'Draft'].includes(sr.status)) && !readOnly && (
             <>
+              {onReject && (
+                <Button
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  onClick={handleReject}
+                  disabled={processingId === sr.id}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Reject
+                </Button>
+              )}
               {onHold && (
                 <Button 
                   variant="ghost" 

@@ -25,6 +25,10 @@ class SocketService {
       timeout: 20000
     });
 
+    this.listeners.forEach((callbacks, event) => {
+      callbacks.forEach(({ wrapped }) => this.socket.on(event, wrapped));
+    });
+
     // Track connection state for observability
     this.connectionState = 'connecting';
     this.connectionAttempts = 0;
@@ -50,13 +54,6 @@ class SocketService {
         console.log('[Socket] Joined role room:', role);
       }
       
-      // Register any queued listeners
-      this.listeners.forEach((callbacks, event) => {
-        callbacks.forEach(cb => {
-          this.socket.on(event, cb.wrapped);
-          console.log('[Socket] Registered listener for event:', event);
-        });
-      });
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -132,15 +129,13 @@ class SocketService {
   }
 
   off(event, callback) {
-    if (!this.socket) return;
-    
     // Find and remove the wrapped callback
     if (this.listeners.has(event)) {
       const callbacks = this.listeners.get(event);
       const index = callbacks.findIndex(cb => cb.original === callback);
       if (index > -1) {
         const wrapped = callbacks[index].wrapped;
-        this.socket.off(event, wrapped);
+        this.socket?.off(event, wrapped);
         callbacks.splice(index, 1);
       }
     }

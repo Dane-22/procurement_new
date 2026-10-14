@@ -1,15 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { purchaseRequestService } from '../../services/purchaseRequests'
+import { pettyCashRequestService } from '../../services/pettyCashRequests'
+import { workflowService } from '../../services/requestWorkflows'
+import { useLiveWorkflowRefresh } from '../../hooks/useLiveWorkflowRefresh'
 import { supplierService } from '../../services/suppliers'
 import { socketService } from '../../services/socket'
 import { projectService } from '../../services/projects'
 import PRDetailsModal from './PRDetailsModal'
+import PettyCashPreviewModal from '../petty-cash/PettyCashPreviewModal'
+import RequestReviewInbox from './RequestReviewInbox'
 import { PRFilters } from './PRFilters'
 import { PRTable } from './PRTable'
 import ProcessItemRequestModal from './ProcessItemRequestModal'
 import { ChevronUp, ChevronDown, Plus, FileSpreadsheet, Edit, Trash2, X, Eye, CheckCircle, XCircle, Pause, Search, Settings } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { displayReviewStatus } from '../../utils/reviewLabels'
 
 // UI Components
 const Card = ({ children, className = '' }) => (
@@ -146,7 +152,7 @@ const StatusBadge = ({ status }) => {
 
   return (
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(status)}`}>
-      {status}
+      {displayReviewStatus(status)}
     </span>
   )
 }
@@ -206,7 +212,11 @@ const PurchaseRequests = () => {
   const urlTab = searchParams.get('tab') || 'my-prs'
 
   const [purchaseRequests, setPurchaseRequests] = useState([])
+  const [pettyCashReviewRequests, setPettyCashReviewRequests] = useState([])
+  const [selectedPettyCashReview, setSelectedPettyCashReview] = useState(null)
+  const [pettyCashReviewSubmitting, setPettyCashReviewSubmitting] = useState(false)
   const [total, setTotal] = useState(0)
+  const [workflowReviewRequests,setWorkflowReviewRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
@@ -332,18 +342,41 @@ const PurchaseRequests = () => {
       setError('')
       const view = user?.role === 'engineer' && urlView === 'all' ? 'all' : null
       console.log('Fetching with view:', view, 'user role:', user?.role, 'tab:', urlTab)
-      const payload = await purchaseRequestService.list({
+      const requestParams = {
         view,
-        page,
-        pageSize,
-        status: urlTab === 'admin_processing' ? 'For Admin Processing' : (urlStatus !== 'ALL' ? urlStatus : null),
-        q: urlQ.trim() ? urlQ.trim() : null,
+        page: urlTab === 'reviews' ? 1 : page,
+        pageSize: urlTab === 'reviews' ? 100 : pageSize,
+        status: urlTab === 'reviews' ? null : urlTab === 'admin_processing' ? 'For Admin Processing' : (urlStatus !== 'ALL' ? urlStatus : null),
+        q: urlTab === 'reviews' ? null : urlQ.trim() ? urlQ.trim() : null,
         pending_review: urlTab === 'reviews' ? 'true' : null
-      })
-      const rows = Array.isArray(payload?.purchaseRequests) ? payload.purchaseRequests : []
-      setPurchaseRequests(rows)
+      }
+      const [payload, pettyCashRows, workflowRows] = await Promise.all([
+        purchaseRequestService.list(requestParams),
+        urlTab === 'reviews' ? pettyCashRequestService.list() : Promise.resolve([]),
+        urlTab === 'reviews' ? workflowService.list() : Promise.resolve([])
+      ])
+      let rows = Array.isArray(payload?.purchaseRequests) ? payload.purchaseRequests : []
+      if (urlTab === 'reviews' && Number(payload?.total) > rows.length) {
+        const pageCount = Math.ceil(Number(payload.total) / 100)
+        const remainingPages = await Promise.all(Array.from({ length: pageCount - 1 }, (_, index) =>
+          purchaseRequestService.list({ ...requestParams, page: index + 2 })
+        ))
+        rows = rows.concat(...remainingPages.map((response) => Array.isArray(response?.purchaseRequests) ? response.purchaseRequests : []))
+      }
+      const activeReviewStatus = ({
+        engineer: 'For Engineer Review',
+        admin: 'For Admin Review',
+        senior_project_manager: 'For Senior Project Manager Review',
+        super_admin: 'For Super Admin Final Approval',
+        ceo: 'For Super Admin Final Approval'
+      })[user?.role]
+      setPurchaseRequests(urlTab === 'reviews' && activeReviewStatus
+        ? rows.filter((request) => request.status === activeReviewStatus)
+        : urlTab === 'reviews' ? [] : rows)
+      setPettyCashReviewRequests(Array.isArray(pettyCashRows) ? pettyCashRows.filter((request) => Number(request.can_review) === 1 || request.can_review === true) : [])
+      setWorkflowReviewRequests(workflowRows.filter(request=>Number(request.can_review)===1))
       setTotal(Number.isFinite(payload?.total) ? payload.total : rows.length)
-      setExpandedId(null)
+      setExpandedId(current=>rows.some(row=>row.id===current)?current:null)
     } catch (err) {
       console.error('Failed to fetch:', err);
       setError('Failed to fetch purchase requests')
@@ -352,7 +385,34 @@ const PurchaseRequests = () => {
     }
   }, [user?.role, urlView, urlTab, page, pageSize, urlStatus, urlQ])
 
+  const openPettyCashReview = async (request) => {
+    try {
+      const fullRequest = await pettyCashRequestService.getById(request.id)
+      setSelectedPettyCashReview(fullRequest)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load petty cash review')
+    }
+  }
+
+  const handlePettyCashReview = async (decision) => {
+    if (!selectedPettyCashReview) return
+    const comment = decision === 'rejected' ? window.prompt('Reason for rejection:') : ''
+    if (decision === 'rejected' && !comment?.trim()) return
+    if (decision === 'approved' && !window.confirm('Approve this petty cash request?')) return
+    try {
+      setPettyCashReviewSubmitting(true)
+      await pettyCashRequestService.review(selectedPettyCashReview.id, decision, comment || '')
+      setSelectedPettyCashReview(null)
+      await fetchPurchaseRequests()
+    } catch (err) {
+      setError(err.response?.data?.message || `Failed to ${decision} petty cash request`)
+    } finally {
+      setPettyCashReviewSubmitting(false)
+    }
+  }
+
   const fetchRef = useRef(null)
+  useLiveWorkflowRefresh(fetchPurchaseRequests)
   useEffect(() => {
     fetchRef.current = fetchPurchaseRequests
   }, [fetchPurchaseRequests])
@@ -971,7 +1031,9 @@ const PurchaseRequests = () => {
         <h2 className="text-lg font-semibold text-gray-900">Purchase Requests</h2>
         <div className="flex items-center gap-3">
           <div className="text-sm text-gray-500">
-            {total === 0
+            {urlTab === 'reviews'
+              ? `${purchaseRequests.length + pettyCashReviewRequests.length} Requests for review`
+              : total === 0
               ? '0 Requests'
               : `Showing ${startItem}-${endItem} of ${total} Request${total !== 1 ? 's' : ''}`
             }
@@ -979,7 +1041,7 @@ const PurchaseRequests = () => {
         </div>
       </div>
 
-      <PRFilters
+      {urlTab !== 'reviews' && <PRFilters
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         commitSearchToUrl={commitSearchToUrl}
@@ -992,9 +1054,15 @@ const PurchaseRequests = () => {
         urlView={urlView}
         handleViewAllChange={handleViewAllChange}
         STATUS_FILTER_OPTIONS={STATUS_FILTER_OPTIONS}
-      />
+      />}
 
-      <PRTable
+      {urlTab === 'reviews' ? <RequestReviewInbox
+        purchaseRequests={purchaseRequests}
+        pettyCashRequests={pettyCashReviewRequests}
+        workflowRequests={workflowReviewRequests}
+        onReviewPurchaseRequest={openReviewModal}
+        onReviewPettyCash={openPettyCashReview}
+      /> : <PRTable
         purchaseRequests={purchaseRequests}
         user={user}
         expandedId={expandedId}
@@ -1021,7 +1089,7 @@ const PurchaseRequests = () => {
         onExport={handleExport}
         handleMarkAsReceived={handleMarkAsReceived}
         openPreview={openPreview}
-      />
+      />}
 
       {/* Edit PR Modal */}
       {showEditModal && (
@@ -1198,6 +1266,19 @@ const PurchaseRequests = () => {
           openProcurementReject(pr)
         } : undefined}
         processingId={procurementSubmitting ? previewPR?.id : null}
+      />
+
+      <PettyCashPreviewModal
+        request={selectedPettyCashReview}
+        onClose={() => setSelectedPettyCashReview(null)}
+        actions={selectedPettyCashReview?.can_review && <>
+          <Button variant="danger" onClick={() => handlePettyCashReview('rejected')} disabled={pettyCashReviewSubmitting}>
+            {pettyCashReviewSubmitting ? 'Processing...' : 'Reject'}
+          </Button>
+          <Button variant="primary" onClick={() => handlePettyCashReview('approved')} disabled={pettyCashReviewSubmitting}>
+            {pettyCashReviewSubmitting ? 'Processing...' : 'Approve'}
+          </Button>
+        </>}
       />
 
       {showProcurementApprovalModal && (

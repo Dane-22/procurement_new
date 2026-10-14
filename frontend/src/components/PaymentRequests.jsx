@@ -6,6 +6,7 @@ import { cashRequestService } from '../services/cashRequests'
 import { supplierService } from '../services/suppliers'
 import { ChevronUp, ChevronDown, Plus, X, Download, Eye } from 'lucide-react'
 import PaymentRequestPreviewModal from './payment-requests/PaymentRequestPreviewModal'
+import { useAuth } from '../contexts/AuthContext'
 
 // UI Components
 const Card = ({ children, className = '' }) => (
@@ -124,6 +125,8 @@ const StatusBadge = ({ status }) => {
 }
 
 const PaymentRequests = () => {
+  const { user } = useAuth()
+  const canCreatePaymentRequest = ['engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'].includes(user?.role)
   const [paymentRequests, setPaymentRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -150,13 +153,10 @@ const PaymentRequests = () => {
   const [selectedCR, setSelectedCR] = useState('')
   const [prSearchQuery, setPrSearchQuery] = useState('')
   const [srSearchQuery, setSrSearchQuery] = useState('')
-  const [crSearchQuery, setCrSearchQuery] = useState('')
   const [prSearchResults, setPrSearchResults] = useState([])
   const [srSearchResults, setSrSearchResults] = useState([])
-  const [crSearchResults, setCrSearchResults] = useState([])
   const [showPrResults, setShowPrResults] = useState(false)
   const [showSrResults, setShowSrResults] = useState(false)
-  const [showCrResults, setShowCrResults] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState('')
   const [payeeName, setPayeeName] = useState('')
   const [payeeAddress, setPayeeAddress] = useState('')
@@ -189,16 +189,17 @@ const PaymentRequests = () => {
     try {
       const [prsData, suppliersData, srsData, crsData] = await Promise.all([
         purchaseRequestService.getAll('all'),
-        supplierService.getAll(),
+        supplierService.getAllForSelect(),
         serviceRequestService.getAll(),
         cashRequestService.getAll()
       ])
+      const ownSource = (source) => user?.role !== 'engineer' || Number(source.requested_by) === Number(user?.id)
       // Show non-debt PRs with 'For Purchase' status
-      setPrs(prsData.filter(pr => pr.status === 'For Purchase' && pr.payment_basis === 'non_debt'))
+      setPrs(prsData.filter(pr => ownSource(pr) && pr.status === 'For Purchase' && pr.payment_basis === 'non_debt'))
       // Show approved Service Requests with service_type = 'Service' (payment request type)
-      setServiceRequests(srsData.filter(sr => sr.status === 'Approved' && sr.service_type === 'Service'))
+      setServiceRequests(srsData.filter(sr => ownSource(sr) && sr.status === 'Approved' && sr.service_type === 'Service'))
       // Show approved Cash Requests with cr_type = 'payment_request'
-      setCashRequests(crsData.filter(cr => cr.status === 'Approved' && cr.cr_type === 'payment_request'))
+      setCashRequests(crsData.filter(cr => ownSource(cr) && cr.status === 'Approved' && cr.cr_type === 'payment_request' && cr.request_kind !== 'petty_cash'))
       setSuppliers(suppliersData)
     } catch (err) {
       console.error('Failed to load data', err)
@@ -219,13 +220,10 @@ const PaymentRequests = () => {
     setSourceType('pr')
     setPrSearchQuery('')
     setSrSearchQuery('')
-    setCrSearchQuery('')
     setPrSearchResults([])
     setSrSearchResults([])
-    setCrSearchResults([])
     setShowPrResults(false)
     setShowSrResults(false)
-    setShowCrResults(false)
     setSelectedSupplier('')
     setPayeeName('')
     setPayeeAddress('')
@@ -291,15 +289,9 @@ const PaymentRequests = () => {
       setProjectAddress(cr.project_address || '')
       setOrderNumber(cr.order_number || '')
       setAmount(cr.amount || 0)
-      // Set payee name from supplier if available
-      if (cr.supplier_name) {
-        setPayeeName(cr.supplier_name)
-        setPayeeAddress(cr.supplier_address || '')
-      }
-      // Find and set supplier if exists
-      if (cr.supplier_id) {
-        setSelectedSupplier(cr.supplier_id.toString())
-      }
+      setPayeeName(cr.supplier_name || '')
+      setPayeeAddress(cr.supplier_address || '')
+      setSelectedSupplier(cr.supplier_id ? String(cr.supplier_id) : '')
       // Cash Requests don't have items like PRs, so clear items
       setItems([])
     } catch (err) {
@@ -417,10 +409,12 @@ const PaymentRequests = () => {
           <div className="text-sm text-gray-500">
             {paymentRequests.length} Payment Request{paymentRequests.length !== 1 ? 's' : ''} total
           </div>
-          <Button onClick={openCreateModal}>
-            <Plus className="w-4 h-4 mr-1" />
-            Create Payment Request
-          </Button>
+          {canCreatePaymentRequest && (
+            <Button onClick={openCreateModal}>
+              <Plus className="w-4 h-4 mr-1" />
+              Create Payment Request
+            </Button>
+          )}
         </div>
       </div>
 
@@ -469,7 +463,7 @@ const PaymentRequests = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {pr.status === 'Draft' && (
+                        {user?.role !== 'engineer' && pr.status === 'Draft' && (
                           <Button 
                             variant="primary" 
                             size="sm" 
@@ -697,13 +691,10 @@ const PaymentRequests = () => {
                           setSelectedCR('')
                           setPrSearchQuery('')
                           setSrSearchQuery('')
-                          setCrSearchQuery('')
                           setPrSearchResults([])
                           setSrSearchResults([])
-                          setCrSearchResults([])
                           setShowPrResults(false)
                           setShowSrResults(false)
-                          setShowCrResults(false)
                           setItems([])
                           setAmount(0)
                         }}
@@ -723,13 +714,10 @@ const PaymentRequests = () => {
                           setSelectedCR('')
                           setPrSearchQuery('')
                           setSrSearchQuery('')
-                          setCrSearchQuery('')
                           setPrSearchResults([])
                           setSrSearchResults([])
-                          setCrSearchResults([])
                           setShowPrResults(false)
                           setShowSrResults(false)
-                          setShowCrResults(false)
                           setItems([])
                           setAmount(0)
                         }}
@@ -874,70 +862,36 @@ const PaymentRequests = () => {
                   </div>
                 )}
 
-                {/* CR Search Input */}
+                {/* Select an existing approved Cash Request; its number is assigned at creation. */}
                 {sourceType === 'cr' && (
-                  <div className="mb-4 relative">
+                  <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Cash Request (Approved for Payment) <span className="text-red-500">*</span>
+                      Approved Cash Request <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
-                      value={crSearchQuery}
+                    <select
+                      value={selectedCR}
                       onChange={(e) => {
-                        const query = e.target.value
-                        setCrSearchQuery(query)
-                        if (query.trim() === '') {
-                          setCrSearchResults([])
-                          setShowCrResults(false)
-                        } else {
-                          const filtered = cashRequests.filter(cr =>
-                            cr.cr_number?.toLowerCase().includes(query.toLowerCase()) ||
-                            cr.project?.toLowerCase().includes(query.toLowerCase()) ||
-                            cr.purpose?.toLowerCase().includes(query.toLowerCase())
-                          )
-                          setCrSearchResults(filtered)
-                          setShowCrResults(true)
-                        }
+                        const id = e.target.value
+                        setSelectedCR(id)
+                        if (id) loadCRData(id)
                       }}
-                      onFocus={() => {
-                        if (crSearchQuery.trim() !== '') {
-                          setShowCrResults(true)
-                        }
-                      }}
-                      placeholder="Search by CR number, project, or purpose..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                      required={!selectedCR}
-                    />
-                    {showCrResults && crSearchResults.length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-auto">
-                        {crSearchResults.map(cr => (
-                          <div
-                            key={cr.id}
-                            onClick={() => {
-                              console.log('Selected CR data:', cr)
-                              setSelectedCR(cr.id)
-                              setCrSearchQuery(`${cr.cr_number} - ${cr.purpose || cr.project} (${formatCurrency(cr.amount)})`)
-                              setShowCrResults(false)
-                              loadCRData(cr.id)
-                            }}
-                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
-                          >
-                            <div className="text-sm font-medium">{cr.cr_number} - {cr.purpose || cr.project}</div>
-                            <div className="text-xs text-gray-500">{cr.supplier_name || 'No supplier'} â€¢ {formatCurrency(cr.amount)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {showCrResults && crSearchQuery.trim() !== '' && crSearchResults.length === 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg px-3 py-2 text-sm text-gray-500">
-                        No matching cash requests found
-                      </div>
-                    )}
-                    <input type="hidden" value={selectedCR} required />
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+                      required
+                    >
+                      <option value="">Select an approved Cash Request</option>
+                      {cashRequests.map(cr => (
+                        <option key={cr.id} value={cr.id}>
+                          {cr.cr_number} — {cr.purpose || cr.project || 'Cash Request'} — {formatCurrency(cr.amount)}
+                        </option>
+                      ))}
+                    </select>
+                    {cashRequests.length === 0 && <p className="mt-1 text-xs text-gray-500">No approved Cash Requests are available for Payment Request creation.</p>}
                   </div>
                 )}
 
-                <Select label="Payee (Supplier)" value={selectedSupplier} onChange={(e) => { const supplierId = e.target.value; setSelectedSupplier(supplierId); const supplier = suppliers.find(s => s.id === parseInt(supplierId)); if (supplier) { setPayeeName(supplier.supplier_name); setPayeeAddress(supplier.address || ''); } }} options={suppliers.map(s => ({ value: s.id, label: s.supplier_name }))} required />
+                <Select label={sourceType === 'cr' ? 'Supplier (optional)' : 'Payee (Supplier)'} value={selectedSupplier} onChange={(e) => { const supplierId = e.target.value; setSelectedSupplier(supplierId); const supplier = suppliers.find(s => s.id === parseInt(supplierId)); if (supplier) { setPayeeName(supplier.supplier_name); setPayeeAddress(supplier.address || ''); } }} options={suppliers.map(s => ({ value: s.id, label: s.supplier_name }))} required={sourceType !== 'cr'} />
+
+                {sourceType === 'cr' && <Input label="Payee Name" value={payeeName} onChange={(e) => setPayeeName(e.target.value)} required />}
 
                 <Input label="Payee Address" value={payeeAddress} onChange={(e) => setPayeeAddress(e.target.value)} />
 
@@ -983,7 +937,9 @@ const PaymentRequests = () => {
 
                 <div className="flex justify-end gap-3 pt-4 border-t">
                   <Button type="button" variant="secondary" onClick={closeCreateModal}>Cancel</Button>
-                  <Button type="button" variant="secondary" disabled={submitting} onClick={(e) => handleSubmit(e, true)}>{submitting ? 'Saving...' : 'Save as Draft'}</Button>
+                  {user?.role !== 'engineer' && (
+                    <Button type="button" variant="secondary" disabled={submitting} onClick={(e) => handleSubmit(e, true)}>{submitting ? 'Saving...' : 'Save as Draft'}</Button>
+                  )}
                   <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create Payment Request'}</Button>
                 </div>
               </form>

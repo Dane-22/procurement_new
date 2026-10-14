@@ -7,6 +7,9 @@ yarn-error.log*
 .env.*
 
 uploads
+private
+private_uploads
+logs
 
 dist
 build

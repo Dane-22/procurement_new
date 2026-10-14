@@ -148,6 +148,12 @@ router.get('/', authenticate, async (req, res) => {
     const whereClauses = [];
     const whereParams = [];
 
+    if (req.query.kind === 'standard') {
+      whereClauses.push("cr.request_kind = 'standard'");
+    } else if (req.query.kind === 'petty_cash') {
+      whereClauses.push("cr.request_kind = 'petty_cash'");
+    }
+
     // Engineers see only their own CRs by default, but can view all with ?view=all
     if (req.user.role === 'engineer' && view !== 'all') {
       whereClauses.push('cr.requested_by = ?');
@@ -379,6 +385,10 @@ router.put('/:id', authenticate, async (req, res) => {
     await assertOrderNumberUnlocked(cr.order_number, 'approval');
     await assertOrderNumberUnlocked(cr.order_number, 'approval');
 
+    if (cr.request_kind === 'petty_cash') {
+      return res.status(400).json({ message: 'Use the Petty Cash Request form to edit this request' });
+    }
+
     // Only the original requester can update
     if (cr.requested_by !== req.user.id) {
       return res.status(403).json({ message: 'Only the original requester can update this cash request' });
@@ -461,6 +471,7 @@ router.put('/:id/submit', authenticate, async (req, res) => {
     }
 
     const cr = crs[0];
+    if (cr.request_kind === 'petty_cash') return res.status(400).json({ message: 'Submit Petty Cash Requests through their own approval flow' });
     await assertOrderNumberUnlocked(cr.order_number, 'approval');
 
     // Only the original requester can submit
@@ -481,13 +492,28 @@ router.put('/:id/submit', authenticate, async (req, res) => {
     if (!cr.amount || cr.amount <= 0) {
       return res.status(400).json({ message: 'Valid amount is required to submit' });
     }
-    const scheduleCount = await getPaymentScheduleCount(db, req.params.id);
+    if (cr.request_kind === 'petty_cash') {
+      const [detailRows] = await db.query(
+        'SELECT COUNT(*) AS line_count, COALESCE(SUM(amount), 0) AS total FROM petty_cash_request_details WHERE cash_request_id = ?',
+        [cr.id]
+      );
+      if (!cr.payee_name || !detailRows[0]?.line_count || Number(detailRows[0].total) !== Number(cr.amount)) {
+        return res.status(400).json({ message: 'Payee and reconciled Petty Cash details are required before submission' });
+      }
+    }
+    const scheduleCount = cr.request_kind === 'petty_cash' ? 1 : await getPaymentScheduleCount(db, req.params.id);
     if (scheduleCount === 0) {
       return res.status(400).json({ message: 'At least one payment schedule is required before submission.' });
     }
 
     conn = await db.getConnection();
     await conn.beginTransaction();
+
+    const [lockedRows] = await conn.query('SELECT status FROM cash_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (!lockedRows[0] || !['Draft', 'Rejected', 'Returned'].includes(lockedRows[0].status)) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Cash request has already changed status' });
+    }
 
     await conn.query(
       "UPDATE cash_requests SET status = 'For Admin Review', updated_at = NOW() WHERE id = ?",
@@ -496,13 +522,13 @@ router.put('/:id/submit', authenticate, async (req, res) => {
 
     await conn.commit();
 
-    // Notify admin for review
-    const procurementUsers = await getProcurementOfficers();
-    for (const p of procurementUsers) {
+    // Notify admins for review after the state change has committed.
+    const adminUsers = await getAdmins();
+    for (const p of adminUsers) {
       await createNotification(
         p,
         'CR Submitted/Resubmitted',
-        `Cash Request ${cr.order_number} has been submitted by ${req.user.first_name} ${req.user.last_name}`,
+        `${cr.request_kind === 'petty_cash' ? 'Petty Cash Request' : 'Cash Request'} ${cr.cr_number} has been submitted by ${req.user.first_name} ${req.user.last_name}`,
         'CR Created',
         cr.id,
         'cash_request'
@@ -510,7 +536,7 @@ router.put('/:id/submit', authenticate, async (req, res) => {
       if (req.io) {
         req.io.to(`user_${p}`).emit('notification', {
           title: 'CR Submitted',
-          message: `Cash Request ${cr.order_number} has been submitted.`
+          message: `Cash Request ${cr.cr_number} has been submitted.`
         });
       }
     }
@@ -551,6 +577,7 @@ router.put('/:id/admin-approve', authenticate, requireAdmin, async (req, res) =>
     const cr = crs[0];
 
     // Only For Admin Review CRs can be admin approved
+    if (cr.request_kind === 'petty_cash') return res.status(400).json({ message: 'Review Petty Cash Requests through their own approval flow' });
     if (cr.status !== 'For Admin Review') {
       return res.status(400).json({ message: 'Cash request not ready for Admin review' });
     }
@@ -558,9 +585,15 @@ router.put('/:id/admin-approve', authenticate, requireAdmin, async (req, res) =>
     conn = await db.getConnection();
     await conn.beginTransaction();
 
+    const [lockedRows] = await conn.query('SELECT status FROM cash_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (lockedRows[0]?.status !== 'For Admin Review') {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Cash request has already changed status' });
+    }
+
     let newStatus;
     if (status === 'approved') {
-      const scheduleCount = await getPaymentScheduleCount(conn, req.params.id);
+      const scheduleCount = cr.request_kind === 'petty_cash' ? 1 : await getPaymentScheduleCount(conn, req.params.id);
       if (scheduleCount === 0) {
         await conn.rollback();
         return res.status(400).json({ message: 'At least one payment schedule is required before approval.' });
@@ -587,6 +620,14 @@ router.put('/:id/admin-approve', authenticate, requireAdmin, async (req, res) =>
     await conn.commit();
 
     // Notify engineer
+    if (cr.request_kind === 'petty_cash') {
+      try {
+        const { logAudit } = await import('../utils/auditLogger.js');
+        await logAudit(req.user.id, 'Petty Cash Admin Review', 'cash_requests', cr.id, JSON.stringify({ decision: status, remarks: remarks || null }));
+      } catch (auditErr) {
+        console.error('Audit log error:', auditErr);
+      }
+    }
     if (status === 'approved') {
       await createNotification(
         cr.requested_by,
@@ -649,6 +690,7 @@ router.put('/:id/super-admin-approve', authenticate, requireSuperAdmin, async (r
     const cr = crs[0];
 
     // Only 'For Super Admin Final Approval' or 'On Hold' CRs can be super admin approved
+    if (cr.request_kind === 'petty_cash') return res.status(400).json({ message: 'Review Petty Cash Requests through their own approval flow' });
     if (cr.status !== 'For Super Admin Final Approval' && cr.status !== 'On Hold') {
       return res.status(400).json({ message: 'Cash request not ready for super admin approval' });
     }
@@ -656,9 +698,15 @@ router.put('/:id/super-admin-approve', authenticate, requireSuperAdmin, async (r
     conn = await db.getConnection();
     await conn.beginTransaction();
 
+    const [lockedRows] = await conn.query('SELECT status FROM cash_requests WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (!['For Super Admin Final Approval', 'On Hold'].includes(lockedRows[0]?.status)) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Cash request has already changed status' });
+    }
+
     let newStatus;
     if (status === 'approved') {
-      const scheduleCount = await getPaymentScheduleCount(conn, req.params.id);
+      const scheduleCount = cr.request_kind === 'petty_cash' ? 1 : await getPaymentScheduleCount(conn, req.params.id);
       if (scheduleCount === 0) {
         await conn.rollback();
         return res.status(400).json({ message: 'At least one payment schedule is required before approval.' });
@@ -685,11 +733,21 @@ router.put('/:id/super-admin-approve', authenticate, requireSuperAdmin, async (r
     await conn.commit();
 
     // Notify engineer
+    if (cr.request_kind === 'petty_cash') {
+      try {
+        const { logAudit } = await import('../utils/auditLogger.js');
+        await logAudit(req.user.id, 'Petty Cash Final Review', 'cash_requests', cr.id, JSON.stringify({ decision: status, remarks: remarks || null }));
+      } catch (auditErr) {
+        console.error('Audit log error:', auditErr);
+      }
+    }
     if (status === 'approved') {
       await createNotification(
         cr.requested_by,
         'Cash Request Approved',
-        `Your Cash Request ${cr.cr_number} has been fully approved and is ready for Payment Request creation`,
+        cr.request_kind === 'petty_cash'
+          ? `Your Petty Cash Request ${cr.cr_number} has been approved and is ready for cash release`
+          : `Your Cash Request ${cr.cr_number} has been fully approved and is ready for Payment Request creation`,
         'PR Approved',
         cr.id,
         'cash_request'
@@ -747,6 +805,9 @@ router.put('/:id/received', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Only the original requester can mark this cash request as received' });
     }
 
+    if (cr.request_kind === 'petty_cash') {
+      return res.status(400).json({ message: 'Use the Petty Cash receipt confirmation action' });
+    }
     const allowedStatuses = ['Payment Request Created', 'Payment Order Created', 'Paid'];
     if (!allowedStatuses.includes(cr.status)) {
       return res.status(400).json({ message: 'Only fulfilled cash requests can be marked as received' });
@@ -949,8 +1010,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
 
-    await conn.query('DELETE FROM cash_request_reviews WHERE cash_request_id = ?', [req.params.id]);
-    await conn.query('DELETE FROM payment_schedules WHERE cash_request_id = ?', [req.params.id]);
+    await conn.query('DELETE FROM cash_request_payment_schedules WHERE cash_request_id = ?', [req.params.id]);
     await conn.query('DELETE FROM cash_requests WHERE id = ?', [req.params.id]);
 
     await conn.commit();
@@ -993,6 +1053,10 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Cash request not found' });
     }
     const cr = crs[0];
+
+    if (cr.request_kind === 'petty_cash') {
+      return res.status(400).json({ message: 'Edit and submit Petty Cash Requests through their own form' });
+    }
 
     // Only original requester can resubmit
     if (cr.requested_by !== req.user.id) {

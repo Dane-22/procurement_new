@@ -7,6 +7,7 @@ export const cashRequestService = {
     const pageSize = params?.pageSize ?? null;
     const status = params?.status ?? null;
     const q = params?.q ?? null;
+    const kind = params?.kind ?? null;
 
     const queryParams = {};
     if (view) queryParams.view = view;
@@ -14,6 +15,7 @@ export const cashRequestService = {
     if (pageSize) queryParams.pageSize = pageSize;
     if (status) queryParams.status = Array.isArray(status) ? status.join(',') : status;
     if (q) queryParams.q = q;
+    if (kind) queryParams.kind = kind;
 
     const response = await api.get('/cash-requests', { params: queryParams, cache: false });
     return response.data;
@@ -69,6 +71,11 @@ export const cashRequestService = {
   submit: async (id) => {
     const response = await api.put(`/cash-requests/${id}/submit`);
     return response.data;
+  },
+  resubmit: async(id,data)=>{
+    await api.post(`/workflows/cr/${id}/withdraw`);
+    await api.put(`/cash-requests/${id}`,data);
+    return (await api.post(`/workflows/cr/${id}/submit`)).data;
   },
 
   approve: async (id, status, rejectionReason = null) => {

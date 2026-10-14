@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { socketService } from '../services/socket'
+import { useLiveWorkflowRefresh } from '../hooks/useLiveWorkflowRefresh'
 import { purchaseRequestService } from '../services/purchaseRequests'
 import { purchaseOrderService } from '../services/purchaseOrders'
 import { serviceRequestService } from '../services/serviceRequests'
@@ -219,6 +220,8 @@ const Dashboard = () => {
       setLoading(false)
     }
   }
+
+  useLiveWorkflowRefresh(fetchDashboardData)
 
   const fetchPricingTrends = async () => {
     try {
