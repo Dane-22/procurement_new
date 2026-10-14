@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { authService } from '../../services/auth';
+import api from '../../services/api';
 import { Key, Eye, EyeOff, CheckCircle, AlertCircle, Database, Download } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -71,19 +72,11 @@ const Settings = () => {
     try {
       setBackupLoading(true);
       setBackupError('');
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch('http://localhost:5001/api/settings/backup', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const response = await api.get('/settings/backup', {
+        responseType: 'blob',
+        cache: false
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate backup');
-      }
-      
-      const blob = await response.blob();
+      const blob = response.data;
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
