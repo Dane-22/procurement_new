@@ -44,7 +44,7 @@ try{
  await (await import('../services/requestWorkflowSchema.js')).prepareRequestWorkflowSchema(db);
  await (await import('../services/auditRemediationSchema.js')).prepareAuditRemediationSchema(db);
  (await import('../utils/logger.js')).default.silent=true;
- for(const [name,[id,role,employee]]of Object.entries(users))await seed('employees',{id,employee_no:employee,first_name:name,last_name:'Synthetic',role,password:'unused',is_active:1,email:null});
+ for(const [name,[id,role,employee]]of Object.entries(users))await seed('employees',{id,employee_no:employee,first_name:name,middle_initial:'T',last_name:'Synthetic',role,password:'unused',is_active:1,email:null});
  await seed('categories',{id:1,category_name:'Flow category',created_by:3});
  await seed('items',{id:1,item_code:'FLOW-ITEM',item_name:'Flow item',category_id:1,unit:'pcs',status:'Active',is_active:1,created_by:3});
  await seed('suppliers',{id:1,supplier_code:'FLOW-SUP',supplier_name:'Flow supplier',address:'Synthetic address',status:'Active',accredited:1});

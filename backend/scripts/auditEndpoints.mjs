@@ -24,8 +24,8 @@ try {
   await (await import('../services/auditRemediationSchema.js')).prepareAuditRemediationSchema(db);
   (await import('../utils/logger.js')).default.silent = true;
   const roles = ['engineer','procurement','admin','senior_project_manager','ceo','super_admin'];
-  for (const [index, role] of roles.entries()) await db.query('INSERT INTO employees(id,employee_no,first_name,last_name,password,role,is_active) VALUES(?,?,?,?,?,?,1)',[index+1,`AUDIT-${index+1}`,'Synthetic',role,'unused',role]);
-  await db.query("INSERT INTO employees(id,employee_no,first_name,last_name,password,role,is_active) VALUES(99,'AUDIT-INACTIVE','Synthetic','Inactive','unused','engineer',0)");
+  for (const [index, role] of roles.entries()) await db.query('INSERT INTO employees(id,employee_no,first_name,middle_initial,last_name,password,role,is_active) VALUES(?,?,?,?,?,?,?,1)',[index+1,`AUDIT-${index+1}`,'Synthetic','T',role,'unused',role]);
+  await db.query("INSERT INTO employees(id,employee_no,first_name,middle_initial,last_name,password,role,is_active) VALUES(99,'AUDIT-INACTIVE','Synthetic','T','Inactive','unused','engineer',0)");
   const server = await import('../server.js'); io = server.io;
   const {app} = server;
   const inventory = [];
