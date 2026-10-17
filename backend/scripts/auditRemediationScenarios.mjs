@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import request from 'supertest';
 import { prepareAuditRemediationSchema } from '../services/auditRemediationSchema.js';
+import { prepareRequestWorkflowSchema } from '../services/requestWorkflowSchema.js';
 
 export async function auditRemediationScenarios(ctx) {
   const {scenario,call,db,app,token,newPR,approvePR,newRequest,approveWorkflow,prBody,base,row,status,seed} = ctx;
   await scenario('Migration: additive upgrade is repeatable and preserves rows and existing statuses', async () => {
     const [before] = await db.query('SELECT COUNT(*) AS count FROM purchase_requests');
     const [columnsBefore] = await db.query("SHOW COLUMNS FROM reimbursements LIKE 'status'");
+    assert.match(process.env.DB_NAME,/^procurement_flow_test_\d+$/);
+    await db.query('DROP TABLE IF EXISTS po_admin_reviews');
+    await prepareRequestWorkflowSchema(db);
+    await prepareRequestWorkflowSchema(db);
+    const [poReviewColumns] = await db.query('SHOW COLUMNS FROM po_admin_reviews');
+    assert.ok(poReviewColumns.some(column=>column.Field==='is_current'));
     await prepareAuditRemediationSchema(db);
     await prepareAuditRemediationSchema(db);
     const [after] = await db.query('SELECT COUNT(*) AS count FROM purchase_requests');

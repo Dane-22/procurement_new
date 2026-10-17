@@ -43,7 +43,7 @@ export async function prepareRequestWorkflowSchema(pool){
     await indexColumn(conn,'payment_orders','reimbursement_id','idx_payment_orders_reimbursement_id');
     // These prerequisites were uncommitted locally before the original deployment,
     // so an older production database can be missing all of them.
-    for(const file of ['add_petty_cash_requests.sql','add_petty_cash_reviews.sql','add_petty_cash_liquidation.sql','20261014_request_workflows.sql'])await createTablesFromMigration(conn,file);
+    for(const file of ['add_petty_cash_requests.sql','add_petty_cash_reviews.sql','add_petty_cash_liquidation.sql','create_po_admin_reviews.sql','20261014_request_workflows.sql'])await createTablesFromMigration(conn,file);
     await addColumn(conn,'request_workflow_receipts','status',"VARCHAR(20) NOT NULL DEFAULT 'pending'");
     await addColumn(conn,'request_workflow_receipts','review_comment','TEXT NULL');
     for(const table of ['purchase_orders','service_requests','cash_requests','purchase_order_items']){
