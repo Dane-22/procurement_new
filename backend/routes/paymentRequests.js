@@ -7,6 +7,10 @@ import { resolveExcelTemplatePath } from '../utils/excelTemplatePath.js';
 import { assertProjectIsActive } from '../utils/branchProjects.js';
 import { assertOrderNumberUnlocked } from '../utils/orderNumberLocks.js';
 
+import { transaction } from '../services/requestWorkflow.js';
+import { fail, moneyCents } from '../utils/requestWorkflowRules.js';
+import { restorePaymentSource } from '../services/paymentSourceRestoration.js';
+
 const router = express.Router();
 const PAYMENT_TERM_LABELS = {
   CASH: 'CASH',
@@ -397,24 +401,8 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       return res.status(403).json({ message: 'Engineers can create payment requests only from their own approved requests' });
     }
     
-    // Generate Payment Request number only for PR-based requests
     let prNumber = null;
-    if (purchase_request_id) {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const initials = 'MTN';
-      
-      const [countResult] = await db.query(
-        "SELECT COUNT(*) as count FROM payment_requests WHERE pr_number LIKE ?",
-        [`${initials}-${year}-${month}-%`]
-      );
-      const sequence = String(countResult[0].count + 1).padStart(3, '0');
-      prNumber = `${initials}-${year}-${month}-${sequence}`;
-    }
-
-    // Calculate total amount if not provided
-    const totalAmount = amount || (Array.isArray(items) ? items : []).reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
+    let totalAmount = amount || (Array.isArray(items) ? items : []).reduce((sum,item)=>sum+item.quantity*item.unit_price,0);
 
     // Start transaction
     const connection = await db.getConnection();
@@ -425,17 +413,35 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       const paymentStatus = req.body.status || 'Pending';
       if (req.user.role === 'engineer' && paymentStatus !== 'Pending') {
         await connection.rollback();
-        connection.release();
+        await connection.query("SELECT RELEASE_LOCK('procurement_payment_request_number')").catch(()=>{});
+      connection.release();
         return res.status(403).json({ message: 'Engineers can submit payment requests, but cannot set approval status or save drafts' });
       }
       
       // Validate status is valid
-      const validStatuses = ['Draft', 'Pending', 'For Approval', 'Approved', 'Rejected', 'On Hold', 'Cancelled'];
+      const validStatuses = ['Draft', 'Pending'];
       if (!validStatuses.includes(paymentStatus)) {
         await connection.rollback();
-        connection.release();
+        await connection.query("SELECT RELEASE_LOCK('procurement_payment_request_number')").catch(()=>{});
+      connection.release();
         return res.status(400).json({ message: 'Invalid status value' });
       }
+
+      if (purchase_request_id) {
+        const [sources]=await connection.query('SELECT status,total_amount FROM purchase_requests WHERE id=? FOR UPDATE',[purchase_request_id]);
+        if(sources[0]?.status!=='For Purchase')throw fail('Source PR is no longer available for payment',409);
+        const [links]=await connection.query("SELECT id FROM payment_requests WHERE purchase_request_id=? AND status NOT IN ('Rejected','Cancelled') LIMIT 1",[purchase_request_id]);
+        if(links.length)throw fail('This PR already has an active Payment Request',409);
+        totalAmount=moneyCents(sources[0].total_amount)/100;
+        const [locked]=await connection.query("SELECT GET_LOCK('procurement_payment_request_number',5) AS acquired");
+        if(!locked[0].acquired)throw fail('Payment request numbering is busy; retry shortly',409);
+        const now=new Date(),prefix='MTN-'+now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-';
+        // A locking read sees the last commit after waiting for the number lease.
+        const [latest]=await connection.query('SELECT pr_number FROM payment_requests WHERE pr_number LIKE ? ORDER BY id DESC LIMIT 1 FOR UPDATE',[prefix+'%']);
+        const sequence=latest.length?Number(latest[0].pr_number.split('-').pop())+1:1;
+        prNumber=prefix+String(sequence).padStart(3,'0');
+      }
+      if(!Number.isFinite(Number(totalAmount))||Number(totalAmount)<=0)throw fail('Payment amount must be positive');
 
       // Create payment request
       const [paymentResult] = await connection.query(
@@ -503,6 +509,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       }
 
       await connection.commit();
+      await connection.query("SELECT RELEASE_LOCK('procurement_payment_request_number')").catch(()=>{});
       connection.release();
 
       res.status(201).json({ 
@@ -512,6 +519,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       });
     } catch (error) {
       await connection.rollback();
+      await connection.query("SELECT RELEASE_LOCK('procurement_payment_request_number')").catch(()=>{});
       connection.release();
       throw error;
     }
@@ -523,7 +531,9 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
 
 // Approve/Reject Payment Request (super admin only)
 router.put('/:id/approve', authenticate, requireSuperAdmin, async (req, res) => {
+  let conn;
   try {
+    conn=await db.getConnection();await conn.beginTransaction();
     const { status, rejection_reason } = req.body;
     console.log('DEBUG: Approve endpoint called');
     console.log('DEBUG: Request body:', req.body);
@@ -534,7 +544,7 @@ router.put('/:id/approve', authenticate, requireSuperAdmin, async (req, res) => 
     console.log('DEBUG: Original status:', status);
     console.log('DEBUG: Normalized status:', normalizedStatus);
 
-    const [paymentRequests] = await db.query('SELECT * FROM payment_requests WHERE id = ?', [req.params.id]);
+    const [paymentRequests] = await conn.query('SELECT * FROM payment_requests WHERE id = ? FOR UPDATE', [req.params.id]);
     console.log('DEBUG: Found payment requests:', paymentRequests.length);
     
     if (paymentRequests.length === 0) {
@@ -568,17 +578,18 @@ router.put('/:id/approve', authenticate, requireSuperAdmin, async (req, res) => 
       rejection_reason: normalizedStatus === 'Rejected' ? rejection_reason : null
     };
 
-    await db.query(
+    await conn.query(
       'UPDATE payment_requests SET status = ?, approved_by = ?, approved_at = ?, rejection_reason = ? WHERE id = ?',
       [updateData.status, updateData.approved_by, updateData.approved_at, updateData.rejection_reason, req.params.id]
     );
 
+    if(normalizedStatus==='Rejected')await restorePaymentSource(conn,paymentRequests[0],'payment_requests',req.params.id);
+    if(normalizedStatus==='Approved'&&paymentRequests[0].purchase_request_id)await conn.query("UPDATE purchase_requests SET status='Completed' WHERE id=?",[paymentRequests[0].purchase_request_id]);
+    await conn.commit();
+
     // If approved, update the related PR to Completed
     if (normalizedStatus === 'Approved') {
-      await db.query(
-        "UPDATE purchase_requests SET status = 'Completed' WHERE id = ?",
-        [paymentRequests[0].purchase_request_id]
-      );
+      // Linked PR update was committed with the approval.
       
       // Notify requester
       await createNotification(
@@ -590,11 +601,7 @@ router.put('/:id/approve', authenticate, requireSuperAdmin, async (req, res) => 
         'payment_request'
       );
     } else if (normalizedStatus === 'Rejected') {
-      // Update PR status back to 'For Purchase'
-      await db.query(
-        "UPDATE purchase_requests SET status = 'For Purchase' WHERE id = ?",
-        [paymentRequests[0].purchase_request_id]
-      );
+      // Source restoration was committed atomically with rejection.
       
       // Notify requester
       await createNotification(
@@ -609,53 +616,28 @@ router.put('/:id/approve', authenticate, requireSuperAdmin, async (req, res) => 
 
     res.json({ message: `Payment request ${normalizedStatus.toLowerCase()} successfully`, status: normalizedStatus });
   } catch (error) {
+    if(conn)await conn.rollback();
     if (error?.statusCode) {
       return res.status(error.statusCode).json({ message: error.message });
     }
     console.error('Failed to approve payment request', error);
     res.status(500).json({ message: 'Failed to approve payment request' });
-  }
+  } finally {if(conn){await conn.rollback();conn.release();}}
 });
 
 // Update Payment Request status (admin only)
-router.put('/:id/status', authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { status } = req.body;
-    
-    // Get current payment request to check its status and get PR id
-    const [paymentRequests] = await db.query(
-      'SELECT purchase_request_id, status, order_number FROM payment_requests WHERE id = ?',
-      [req.params.id]
-    );
-    
-    if (paymentRequests.length === 0) {
-      return res.status(404).json({ message: 'Payment request not found' });
-    }
-    await assertOrderNumberUnlocked(paymentRequests[0].order_number, 'status update');
-    
-    const currentStatus = paymentRequests[0].status;
-    const purchaseRequestId = paymentRequests[0].purchase_request_id;
-    
-    await db.query(
-      'UPDATE payment_requests SET status = ?, updated_at = NOW() WHERE id = ?',
-      [status, req.params.id]
-    );
-    
-    // If changing from Draft to Pending, also update PR status to 'Payment Request Created'
-    if (currentStatus === 'Draft' && status === 'Pending' && purchaseRequestId) {
-      await db.query(
-        'UPDATE purchase_requests SET status = ?, updated_at = NOW() WHERE id = ?',
-        ['Payment Request Created', purchaseRequestId]
-      );
-    }
-
-    res.json({ message: 'Payment request status updated successfully' });
-  } catch (error) {
-    if (error?.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-    res.status(500).json({ message: 'Failed to update payment request status' });
-  }
+router.put('/:id/status', authenticate, requireAdmin, async(req,res)=>{
+  try{
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM payment_requests WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Payment request not found',404);
+      if(rows[0].status!=='Draft'||req.body.status!=='Pending')throw fail('Use the Payment Request review action; this status transition is not allowed',409);
+      await assertOrderNumberUnlocked(rows[0].order_number,'submission');
+      await conn.query("UPDATE payment_requests SET status='Pending',updated_at=NOW() WHERE id=?",[req.params.id]);
+      if(rows[0].purchase_request_id)await conn.query("UPDATE purchase_requests SET status='Payment Request Created',updated_at=NOW() WHERE id=?",[rows[0].purchase_request_id]);
+    });
+    res.json({message:'Payment request submitted successfully'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to submit payment request'});}
 });
 
 // Export Payment Request to Excel
@@ -822,56 +804,23 @@ router.get('/:id/export', authenticate, async (req, res) => {
 });
 
 // Delete Payment Request (admin/super admin)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
-  let conn;
+router.delete('/:id', authenticate, requireAdmin, async(req,res)=>{
   try {
-    const isSuperAdmin = req.user.role === 'super_admin';
-    const [paymentRequests] = await db.query('SELECT pr_number, purchase_request_id FROM payment_requests WHERE id = ?', [req.params.id]);
-    if (paymentRequests.length === 0) {
-      return res.status(404).json({ message: 'Payment request not found' });
-    }
-    const reqData = paymentRequests[0];
-
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-
-    // Delete items first (cascade should handle this, but being explicit)
-    await conn.query('DELETE FROM payment_request_items WHERE payment_request_id = ?', [req.params.id]);
-    
-    // Delete payment request
-    await conn.query('DELETE FROM payment_requests WHERE id = ?', [req.params.id]);
-
-    // Revert PR status back to 'For Purchase'
-    if (reqData.purchase_request_id) {
-      await conn.query(
-        "UPDATE purchase_requests SET status = 'For Purchase' WHERE id = ?",
-        [reqData.purchase_request_id]
-      );
-    }
-
-    await conn.commit();
-
-    if (isSuperAdmin) {
-      try {
-        const { logAudit } = await import('../utils/auditLogger.js');
-        await logAudit(req.user.id, 'Request Deleted', 'payment_requests', req.params.id, JSON.stringify({ pr_number: reqData.pr_number }));
-      } catch (auditErr) {
-        console.error('Audit log error:', auditErr);
-      }
-    }
-
-    res.json({ message: 'Payment request deleted successfully' });
-  } catch (error) {
-    if (conn) {
-      try {
-        await conn.rollback();
-      } catch {}
-    }
-    console.error('Failed to delete payment request', error);
-    res.status(500).json({ message: 'Failed to delete payment request' });
-  } finally {
-    if (conn) conn.release();
-  }
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM payment_requests WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Payment request not found',404);
+      const payment=rows[0];
+      if(!['Draft','Pending'].includes(payment.status))throw fail('Only Draft or Pending payment requests may be deleted',409);
+      await assertOrderNumberUnlocked(payment.order_number,'deletion');
+      const [links]=await conn.query('SELECT id FROM disbursement_vouchers WHERE payment_request_id=? LIMIT 1',[payment.id]);
+      if(links.length)throw fail('Payment request has voucher history and cannot be deleted',409);
+      await conn.query('INSERT INTO system_audit_logs (user_id,action,entity_type,entity_id,details) VALUES (?,?,?,?,?)',[req.user.id,'Payment Request Deleted','payment_requests',payment.id,JSON.stringify(payment)]);
+      await conn.query('DELETE FROM payment_request_items WHERE payment_request_id=?',[payment.id]);
+      await conn.query('DELETE FROM payment_requests WHERE id=?',[payment.id]);
+      await restorePaymentSource(conn,payment,'payment_requests',payment.id);
+    });
+    res.json({message:'Payment request deleted successfully'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to delete payment request'});}
 });
 
 export default router;

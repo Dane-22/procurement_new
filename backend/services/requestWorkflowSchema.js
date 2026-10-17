@@ -10,7 +10,7 @@ async function indexColumn(conn,table,column,index){
   const [rows]=await conn.query('SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=? AND SEQ_IN_INDEX=1 LIMIT 1',[table,column]);
   if(!rows.length)await conn.query(`CREATE INDEX \`${index}\` ON \`${table}\` (\`${column}\`)`);
 }
-async function mergeStatuses(conn,table,extra){
+export async function mergeStatuses(conn,table,extra){
   const status=(await columns(conn,table)).find(c=>c.Field==='status');
   if(!status?.Type.startsWith('enum('))return;
   const existing=[...status.Type.matchAll(/'((?:''|[^'])*)'/g)].map(m=>m[1].replace(/''/g,"'"));

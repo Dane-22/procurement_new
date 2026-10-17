@@ -637,7 +637,7 @@ router.get('/:id/export', authenticate, async (req, res) => {
     let rowNum = 12;
     items.forEach((item, index) => {
       const row = worksheet.getRow(rowNum);
-      row.getCell(1).value = item.quantity; // A - QTY
+      row.getCell(1).value = Number(item.quantity); // A - QTY
       row.getCell(2).value = item.unit; // B - UNIT
       // Description spans C-E, set to C
       row.getCell(3).value = item.item_name || item.item_code; // C - DESCRIPTION (spans to E)
@@ -647,7 +647,7 @@ router.get('/:id/export', authenticate, async (req, res) => {
     });
 
     // Fill purchase total (G29)
-    worksheet.getCell('G29').value = po.total_amount || 0;
+    worksheet.getCell('G29').value = Number(po.total_amount) || 0;
 
     // Generate filename
     const filename = `PO-${po.po_number}-${Date.now()}.xlsx`;

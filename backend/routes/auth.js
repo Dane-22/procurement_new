@@ -117,27 +117,8 @@ router.post('/push-token', authenticate, async (req, res) => {
 });
 
 // Get current user profile (protected)
-router.get('/me', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
-    }
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const [rows] = await db.query(
-      'SELECT id, employee_no, first_name, middle_initial, last_name, role, department, is_active FROM employees WHERE id = ?',
-      [decoded.id]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.json({ user: rows[0] });
-  } catch (error) {
-    res.status(401).json({ message: 'Invalid token' });
-  }
+router.get('/me', authenticate, (req, res) => {
+  res.json({ user: req.user });
 });
 
 // Procurement Login - forwards to coworker's API
@@ -289,12 +270,13 @@ router.post('/sync-password',
   ],
   async (req, res) => {
     try {
+      const apiKey = req.headers['x-api-key'];
+      if (!apiKey) return res.status(401).json({ message: 'Unauthorized' });
       if (!ATTENDANCE_SYNC_API_KEY) {
-        return res.status(500).json({ message: 'Password sync is not configured' });
+        return res.status(503).json({ message: 'Password sync is not configured' });
       }
 
-      const apiKey = req.headers['x-api-key'];
-      if (!apiKey || apiKey !== ATTENDANCE_SYNC_API_KEY) {
+      if (apiKey !== ATTENDANCE_SYNC_API_KEY) {
         return res.status(401).json({ message: 'Unauthorized' });
       }
 

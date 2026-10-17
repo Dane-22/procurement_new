@@ -2,9 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin, authorize } from '../middleware/auth.js';
 import db from '../config/database.js';
-import { getReviewersForPR } from '../utils/notifications.js';
+import { initialPRStatus, assignPRReviewers } from '../utils/purchaseRequestReviewFlow.js';
 
 const router = express.Router();
 
@@ -35,29 +35,7 @@ router.get('/', authenticate, async (req, res) => {
     const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 20, 1), 100);
     const offset = (page - 1) * pageSize;
 
-    // Fetch unique suppliers from purchase requests that are not in suppliers table
-    const [prSuppliers] = await db.query(`
-      SELECT DISTINCT
-        pr.supplier_name,
-        pr.supplier_address
-      FROM purchase_requests pr
-      WHERE pr.supplier_name IS NOT NULL
-        AND pr.supplier_name != ''
-        AND pr.supplier_name NOT IN (SELECT supplier_name FROM suppliers WHERE status = 'Active')
-      GROUP BY pr.supplier_name, pr.supplier_address
-      ORDER BY pr.supplier_name
-    `);
-
-    // Insert new suppliers from PR requests into suppliers table
-    for (const prSupplier of prSuppliers) {
-      const supplierCode = 'SUP' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100);
-      await db.query(
-        'INSERT INTO suppliers (supplier_code, supplier_name, address, status) VALUES (?, ?, ?, ?)',
-        [supplierCode, prSupplier.supplier_name, prSupplier.supplier_address, 'Active']
-      );
-    }
-
-    // Fetch all suppliers (including newly inserted ones)
+    // Listing is read-only; explicit supplier mutations own creation.
     const [suppliers] = await db.query(`
       SELECT s.*, COUNT(si.item_id) as items_count
       FROM suppliers s
@@ -146,6 +124,8 @@ router.get('/from-pr-requests', authenticate, async (req, res) => {
       GROUP BY pr.supplier_name, pr.supplier_address
       ORDER BY pr.supplier_name
     `);
+
+    if (!prSuppliers.length) return res.json({ suppliers: [] });
 
     // Fetch accredited status from suppliers table
     const [accreditedSuppliers] = await db.query(`
@@ -273,112 +253,37 @@ router.post('/:id/items', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Update supplier accreditation status (Super Admin only)
-router.put('/:supplierName/accredit', authenticate, async (req, res) => {
+router.put('/:supplierName/accredit', authenticate, authorize('super_admin'), async (req, res) => {
+  let conn;
   try {
     const { accredited, accreditation_notes } = req.body;
+    if (typeof accredited !== 'boolean') return res.status(400).json({ message: 'accredited must be a boolean' });
+    conn = await db.getConnection();
+    await conn.beginTransaction();
     const supplierName = req.params.supplierName;
-
-    if (typeof accredited !== 'boolean') {
-      return res.status(400).json({ message: 'accredited must be a boolean' });
-    }
-
-    // Check if supplier exists in suppliers table
-    const [existingSupplier] = await db.query(
-      'SELECT id FROM suppliers WHERE supplier_name = ?',
-      [supplierName]
-    );
-
-    if (existingSupplier.length === 0) {
-      // Create new supplier record if it doesn't exist
-      const supplierCode = 'SUP' + Date.now().toString().slice(-6);
-      try {
-        const [result] = await db.query(
-          'INSERT INTO suppliers (supplier_code, supplier_name, accredited, accredited_by, accredited_at, accreditation_notes) VALUES (?, ?, ?, ?, NOW(), ?)',
-          [supplierCode, supplierName, accredited ? 1 : 0, req.user.id, accreditation_notes || null]
-        );
-      } catch (insertError) {
-        // If columns don't exist, try without them
-        if (insertError.code === 'ER_BAD_FIELD_ERROR') {
-          const [result] = await db.query(
-            'INSERT INTO suppliers (supplier_code, supplier_name) VALUES (?, ?)',
-            [supplierCode, supplierName]
-          );
-        } else {
-          throw insertError;
-        }
-      }
+    const [existing] = await conn.query('SELECT id FROM suppliers WHERE supplier_name=? FOR UPDATE', [supplierName]);
+    let supplierId = existing[0]?.id;
+    if (!supplierId) {
+      const [created] = await conn.query('INSERT INTO suppliers (supplier_code,supplier_name,accredited,accredited_by,accredited_at,accreditation_notes) VALUES (?,?,?,?,NOW(),?)', ['SUP'+Date.now(),supplierName,accredited?1:0,req.user.id,accreditation_notes||null]);
+      supplierId = created.insertId;
     } else {
-      // Update existing supplier
-      try {
-        await db.query(
-          'UPDATE suppliers SET accredited = ?, accredited_by = ?, accredited_at = NOW(), accreditation_notes = ? WHERE supplier_name = ?',
-          [accredited ? 1 : 0, req.user.id, accreditation_notes || null, supplierName]
-        );
-      } catch (updateError) {
-        // If columns don't exist, try without them
-        if (updateError.code === 'ER_BAD_FIELD_ERROR') {
-          console.log('Accreditation columns not found in database. Please run the migration.');
-          res.status(400).json({ message: 'Database migration required. Please run the accreditation migration.' });
-          return;
-        } else {
-          throw updateError;
-        }
-      }
+      await conn.query('UPDATE suppliers SET accredited=?,accredited_by=?,accredited_at=NOW(),accreditation_notes=? WHERE id=?', [accredited?1:0,req.user.id,accreditation_notes||null,supplierId]);
     }
-
-    // If supplier is now accredited, auto-update all pending accreditation review PRs
+    await conn.query('UPDATE purchase_requests SET supplier_accredited=? WHERE supplier_name=?', [accredited?1:0,supplierName]);
     if (accredited) {
-      console.log(`🔍 Updating PRs for supplier: ${supplierName}`);
-      
-      const [pendingPRs] = await db.query(
-        `SELECT pr.id, pr.status, pr.requested_by, e.role as requester_role
-         FROM purchase_requests pr
-         JOIN employees e ON pr.requested_by = e.id
-         WHERE pr.supplier_name = ? AND pr.status = 'Pending Accreditation Review'`,
-        [supplierName]
-      );
-
-      console.log(`✅ Found ${pendingPRs.length} pending accreditation review PRs for ${supplierName}`);
-
-      // Update each PR to the next appropriate status based on requester role and create review records
-      for (const pr of pendingPRs) {
-        let newStatus;
-        if (pr.requester_role === 'engineer') {
-          newStatus = 'For Engineer Review';
-        } else if (pr.requester_role === 'admin') {
-          newStatus = 'For Admin Review';
-        } else if (pr.requester_role === 'procurement') {
-          newStatus = 'For Procurement Review';
-        } else {
-          newStatus = 'For Super Admin Final Approval';
-        }
-
-        // Update PR status
-        await db.query(
-          'UPDATE purchase_requests SET status = ?, updated_at = NOW() WHERE id = ?',
-          [newStatus, pr.id]
-        );
-
-        // Create review records for required reviewers
-        const reviewers = await getReviewersForPR(pr.requester_role);
-        const filteredReviewers = reviewers.filter(reviewerId => reviewerId !== pr.requested_by);
-
-        for (const reviewerId of filteredReviewers) {
-          await db.query(
-            'INSERT IGNORE INTO purchase_request_reviews (purchase_request_id, reviewer_id, review_status) VALUES (?, ?, ?)',
-            [pr.id, reviewerId, 'pending']
-          );
-        }
-
-        console.log(`✅ Updated PR ${pr.id} status to ${newStatus} with ${filteredReviewers.length} reviewers`);
+      const [pending] = await conn.query("SELECT pr.id,pr.requested_by,e.role FROM purchase_requests pr JOIN employees e ON e.id=pr.requested_by WHERE pr.supplier_name=? AND pr.status='Pending Accreditation Review' FOR UPDATE", [supplierName]);
+      for (const pr of pending) {
+        await conn.query('UPDATE purchase_requests SET supplier_id=?,status=?,updated_at=NOW() WHERE id=?', [supplierId,initialPRStatus(pr.role,1),pr.id]);
+        await assignPRReviewers(conn,pr.id,pr.requested_by,pr.role);
       }
     }
-
+    await conn.commit();
     res.json({ message: 'Supplier accreditation status updated successfully' });
   } catch (error) {
+    if (conn) await conn.rollback();
     console.error('Failed to update supplier accreditation:', error);
     res.status(500).json({ message: 'Failed to update supplier accreditation' });
-  }
+  } finally { if (conn) conn.release(); }
 });
 
 // Upload accreditation files for supplier (Super Admin only)

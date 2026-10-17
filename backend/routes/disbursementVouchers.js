@@ -5,6 +5,10 @@ import { createNotification, getSuperAdmins, getProcurementOfficers } from '../u
 import ExcelJS from 'exceljs';
 import { resolveExcelTemplatePath } from '../utils/excelTemplatePath.js';
 
+import { transaction } from '../services/requestWorkflow.js';
+import { fail } from '../utils/requestWorkflowRules.js';
+import { assertOrderNumberUnlocked } from '../utils/orderNumberLocks.js';
+
 const router = express.Router();
 
 const getTodayYmd = () => {
@@ -355,7 +359,7 @@ router.get('/:id', authenticate, async (req, res) => {
              po.po_number, po.total_amount as po_total_amount,
              pr.pr_number, pr.project_address,
              sr.sr_number, sr.purpose as sr_purpose,
-             cr.cr_number, cr.receiver as cr_receiver, cr.purpose as cr_purpose,
+             cr.cr_number, cr.received_by as cr_receiver, cr.purpose as cr_purpose,
              sr2.sr_number as payment_request_sr_number,
              prq.payee_name, prq.pr_number as payment_request_pr_number,
              e.first_name as prepared_by_first_name,
@@ -757,13 +761,18 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     await conn.beginTransaction();
     
     // Check if DV exists
-    const [dvs] = await conn.query('SELECT * FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
+    const [dvs] = await conn.query('SELECT * FROM disbursement_vouchers WHERE id = ? FOR UPDATE', [req.params.id]);
     if (dvs.length === 0) {
       await conn.rollback();
       return res.status(404).json({ message: 'Disbursement voucher not found' });
     }
     
     const dv = dvs[0];
+
+    if (!['Draft','Pending'].includes(dv.status) || dv.certified_by_accounting || dv.certified_by_manager || (status && status !== dv.status)) {
+      await conn.rollback();
+      return res.status(409).json({ message: 'Only uncertified voucher details may be edited; use certification and payment actions to change status' });
+    }
     
     // Update DV
     await conn.query(
@@ -803,91 +812,63 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Certify DV by Accounting (admin with accounting role or any admin)
-router.put('/:id/certify-accounting', authenticate, requireAdmin, async (req, res) => {
-  try {
-    const [dvs] = await db.query('SELECT * FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
-    if (dvs.length === 0) {
-      return res.status(404).json({ message: 'Disbursement voucher not found' });
-    }
-    
-    await db.query(
-      'UPDATE disbursement_vouchers SET certified_by_accounting = ?, updated_at = NOW() WHERE id = ?',
-      [req.user.id, req.params.id]
-    );
-
-    res.json({ message: 'Disbursement voucher certified by accounting' });
-  } catch (error) {
-    console.error('Failed to certify disbursement voucher', error);
-    res.status(500).json({ message: 'Failed to certify disbursement voucher' });
-  }
+router.put('/:id/certify-accounting', authenticate, requireAdmin, async(req,res)=>{
+  try{
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM disbursement_vouchers WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Disbursement voucher not found',404);
+      if(rows[0].status!=='Pending'||rows[0].certified_by_accounting)throw fail('Voucher is not awaiting accounting certification',409);
+      await assertOrderNumberUnlocked(rows[0].order_number,'accounting certification');
+      await conn.query('UPDATE disbursement_vouchers SET certified_by_accounting=?,updated_at=NOW() WHERE id=?',[req.user.id,req.params.id]);
+    });
+    res.json({message:'Disbursement voucher certified by accounting'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to certify disbursement voucher'});}
 });
 
 // Certify DV by Manager (super admin)
-router.put('/:id/certify-manager', authenticate, requireSuperAdmin, async (req, res) => {
-  try {
-    const [dvs] = await db.query('SELECT * FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
-    if (dvs.length === 0) {
-      return res.status(404).json({ message: 'Disbursement voucher not found' });
-    }
-    
-    await db.query(
-      'UPDATE disbursement_vouchers SET certified_by_manager = ?, status = ?, updated_at = NOW() WHERE id = ?',
-      [req.user.id, 'Approved', req.params.id]
-    );
-
-    res.json({ message: 'Disbursement voucher approved by manager', status: 'Approved' });
-  } catch (error) {
-    console.error('Failed to certify disbursement voucher', error);
-    res.status(500).json({ message: 'Failed to certify disbursement voucher' });
-  }
+router.put('/:id/certify-manager', authenticate, requireSuperAdmin, async(req,res)=>{
+  try{
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM disbursement_vouchers WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Disbursement voucher not found',404);
+      if(rows[0].status!=='Pending'||!rows[0].certified_by_accounting)throw fail('Accounting certification is required before manager approval',409);
+      await assertOrderNumberUnlocked(rows[0].order_number,'manager certification');
+      await conn.query("UPDATE disbursement_vouchers SET certified_by_manager=?,status='Approved',updated_at=NOW() WHERE id=?",[req.user.id,req.params.id]);
+    });
+    res.json({message:'Disbursement voucher approved by manager',status:'Approved'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to certify disbursement voucher'});}
 });
 
-// Mark DV as Paid (admin only)
-router.put('/:id/mark-paid', authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { check_number, bank_name, payment_date, received_by, received_date } = req.body;
-    
-    const [dvs] = await db.query('SELECT * FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
-    if (dvs.length === 0) {
-      return res.status(404).json({ message: 'Disbursement voucher not found' });
-    }
-    
-    await db.query(
-      `UPDATE disbursement_vouchers 
-       SET status = 'Paid', check_number = ?, bank_name = ?, payment_date = ?, 
-           received_by = ?, received_date = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [check_number, bank_name, payment_date, received_by, received_date || new Date(), req.params.id]
-    );
-
-    res.json({ message: 'Disbursement voucher marked as paid' });
-  } catch (error) {
-    console.error('Failed to mark disbursement voucher as paid', error);
-    res.status(500).json({ message: 'Failed to mark disbursement voucher as paid' });
-  }
+// Payment is serialized with certification and repeated release attempts.
+router.put('/:id/mark-paid', authenticate, requireAdmin, async(req,res)=>{
+  try{
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM disbursement_vouchers WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Disbursement voucher not found',404);
+      const voucher=rows[0];
+      if(voucher.status!=='Approved'||!voucher.certified_by_accounting||!voucher.certified_by_manager)throw fail('Approved voucher with accounting and manager certifications required',409);
+      await assertOrderNumberUnlocked(voucher.order_number,'payment');
+      const {check_number,bank_name,payment_date,received_by,received_date}=req.body;
+      await conn.query("UPDATE disbursement_vouchers SET status='Paid',check_number=?,bank_name=?,payment_date=?,received_by=?,received_date=?,updated_at=NOW() WHERE id=?",[check_number||null,bank_name||null,payment_date||null,received_by||null,received_date||new Date(),voucher.id]);
+    });
+    res.json({message:'Disbursement voucher marked as paid'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to mark disbursement voucher as paid'});}
 });
 
 // Delete/Cancel Disbursement Voucher (admin only)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
-  try {
-    const [dvs] = await db.query('SELECT * FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
-    if (dvs.length === 0) {
-      return res.status(404).json({ message: 'Disbursement voucher not found' });
-    }
-    
-    // Only allow deleting Draft or Pending DVs
-    const dv = dvs[0];
-    if (dv.status === 'Paid') {
-      return res.status(400).json({ message: 'Cannot delete a paid disbursement voucher' });
-    }
-    
-    await db.query('DELETE FROM disbursement_vouchers WHERE id = ?', [req.params.id]);
-
-    res.json({ message: 'Disbursement voucher deleted successfully' });
-  } catch (error) {
-    console.error('Failed to delete disbursement voucher', error);
-    res.status(500).json({ message: 'Failed to delete disbursement voucher' });
-  }
+router.delete('/:id', authenticate, requireAdmin, async(req,res)=>{
+  try{
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM disbursement_vouchers WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Disbursement voucher not found',404);
+      const voucher=rows[0];
+      if(!['Draft','Pending'].includes(voucher.status)||voucher.certified_by_accounting||voucher.certified_by_manager)throw fail('Certified or paid vouchers must retain their history and cannot be deleted',409);
+      await assertOrderNumberUnlocked(voucher.order_number,'deletion');
+      await conn.query('INSERT INTO system_audit_logs (user_id,action,entity_type,entity_id,details) VALUES (?,?,?,?,?)',[req.user.id,'Voucher Deleted','disbursement_vouchers',voucher.id,JSON.stringify(voucher)]);
+      await conn.query('DELETE FROM disbursement_vouchers WHERE id=?',[voucher.id]);
+    });
+    res.json({message:'Disbursement voucher deleted successfully'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to delete disbursement voucher'});}
 });
 
 // Export DV to Excel

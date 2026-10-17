@@ -15,7 +15,7 @@ export const authenticate = async (req, res, next) => {
     
     // Get user from database
     const [rows] = await db.query(
-      'SELECT id, employee_no, first_name, middle_initial, last_name, role, is_active FROM employees WHERE id = ?',
+      'SELECT id, employee_no, first_name, middle_initial, last_name, role, department, is_active FROM employees WHERE id = ?',
       [decoded.id]
     );
 

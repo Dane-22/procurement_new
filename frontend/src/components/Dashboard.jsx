@@ -5,6 +5,7 @@ import { purchaseRequestService } from '../services/purchaseRequests'
 import { purchaseOrderService } from '../services/purchaseOrders'
 import { serviceRequestService } from '../services/serviceRequests'
 import { cashRequestService } from '../services/cashRequests'
+import { reportService } from '../services/reports'
 import pricingHistoryService from '../services/pricingHistory'
 import { FileText, Clock, CheckCircle, ShoppingCart, AlertCircle, CreditCard, TrendingUp } from 'lucide-react'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -74,6 +75,7 @@ const Dashboard = () => {
   })
   const [recentActivity, setRecentActivity] = useState([])
   const [loading, setLoading] = useState(true)
+  const [dashboardError, setDashboardError] = useState('')
   const [pricingTrends, setPricingTrends] = useState([])
   const [topItems, setTopItems] = useState([])
   const [selectedItem, setSelectedItem] = useState('')
@@ -119,67 +121,32 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
+      setDashboardError('')
       
       // Fetch scoped dashboard snapshots (latest 5 per module) + totals
-      const [prPayload, poPayload, srPayload, crPayload] = await Promise.all([
+      const [prPayload, poPayload, srPayload, crPayload, summary] = await Promise.all([
         purchaseRequestService.list({ page: 1, pageSize: 5 }),
         purchaseOrderService.list({ page: 1, pageSize: 5 }),
         serviceRequestService.list({ page: 1, pageSize: 5 }),
-        cashRequestService.list({ page: 1, pageSize: 5 })
+        cashRequestService.list({ page: 1, pageSize: 5 }),
+        reportService.getSummary()
       ])
 
       const prs = Array.isArray(prPayload?.purchaseRequests) ? prPayload.purchaseRequests : []
       const pos = Array.isArray(poPayload?.purchaseOrders) ? poPayload.purchaseOrders : []
       const srs = Array.isArray(srPayload?.serviceRequests) ? srPayload.serviceRequests : []
       const crs = Array.isArray(crPayload?.cashRequests) ? crPayload.cashRequests : []
-      const prTotal = Number.isFinite(prPayload?.total) ? prPayload.total : prs.length
-      const poTotal = Number.isFinite(poPayload?.total) ? poPayload.total : pos.length
-      const srTotal = Number.isFinite(srPayload?.total) ? srPayload.total : srs.length
-      const crTotal = Number.isFinite(crPayload?.total) ? crPayload.total : crs.length
-
       // Store full data for tabs
       setPurchaseRequests(prs)
       setPurchaseOrders(pos)
       setServiceRequests(srs)
       setCashRequests(crs)
 
-      // Calculate stats
-      const pendingPRs = prs.filter(pr => pr.status === 'Pending' || pr.status === 'For Approval').length
-      const approvedPRs = prs.filter(pr => pr.status === 'Approved' || pr.status === 'PO Created' || pr.status === 'For Purchase').length
-      const pendingSRs = srs.filter(sr => sr.status === 'For Procurement Review').length
-      const pendingCRs = crs.filter(cr => cr.status === 'Pending' || cr.status === 'For Admin Approval').length
-
-      setStats({
-        totalPRs: prTotal,
-        pendingPRs,
-        approvedPRs,
-        totalPOs: poTotal,
-        totalSRs: srTotal,
-        pendingSRs,
-        totalCRs: crTotal,
-        pendingCRs
-      })
-
-      // Calculate monthly spending from PRs and POs
-      const spendingByMonth = {}
-      const allTransactions = [
-        ...prs.map(pr => ({ date: pr.created_at, amount: pr.total_amount || 0, type: 'PR' })),
-        ...pos.map(po => ({ date: po.created_at, amount: po.total_amount || 0, type: 'PO' }))
-      ]
-      
-      allTransactions.forEach(tx => {
-        if (!tx.date) return
-        const month = new Date(tx.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short' })
-        spendingByMonth[month] = (spendingByMonth[month] || 0) + (tx.amount || 0)
-      })
-
-      // Convert to array and sort by date
-      const spendingData = Object.entries(spendingByMonth)
-        .map(([month, amount]) => ({ month, amount: Math.round(amount) }))
-        .sort((a, b) => new Date(a.month) - new Date(b.month))
-        .slice(-6) // Last 6 months
-      
-      setMonthlySpending(spendingData)
+      setStats(summary.stats)
+      setMonthlySpending((summary.monthlyPayments || []).map(row => ({
+        month: new Date(row.period + '-01T00:00:00').toLocaleDateString('en-PH', {year:'numeric',month:'short'}),
+        amount: Number(row.amount)
+      })))
 
       // Create recent activity feed: latest 5 overall across modules
       const activity = [
@@ -216,6 +183,7 @@ const Dashboard = () => {
       setRecentActivity(activity)
     } catch (err) {
       console.error('Failed to fetch dashboard data', err)
+      setDashboardError('Dashboard data is temporarily unavailable. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -271,6 +239,8 @@ const Dashboard = () => {
       </div>
     )
   }
+
+  if (dashboardError) return <Card className="p-4"><p role="alert">{dashboardError}</p><button type="button" className="mt-3 text-blue-600" onClick={fetchDashboardData}>Retry</button></Card>
 
   return (
     <div className="space-y-6">
@@ -402,12 +372,12 @@ const Dashboard = () => {
         />
       </div>
 
-      {/* Monthly Spending Trend */}
+      {/* Monthly Voucher Payments */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Monthly Spending Trend</h3>
-            <p className="text-xs text-gray-500">Total procurement spend over the last 6 months</p>
+            <h3 className="text-sm font-semibold text-gray-900">Monthly Voucher Payments</h3>
+            <p className="text-xs text-gray-500">Paid vouchers over six months; excludes commitments and direct cash releases</p>
           </div>
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-yellow-500" />
@@ -430,10 +400,10 @@ const Dashboard = () => {
                   tick={{ fontSize: 11 }}
                   stroke="#9ca3af"
                   axisLine={false}
-                  tickFormatter={(value) => `Ã¢â€šÂ±${value >= 1000 ? (value/1000) + 'k' : value}`}
+                  tickFormatter={(value) => formatCurrency(value)}
                 />
                 <Tooltip 
-                  formatter={(value) => [formatCurrency(value), 'Total Spend']}
+                  formatter={(value) => [formatCurrency(value), 'Voucher Payments']}
                   labelStyle={{ color: '#374151', fontSize: 12 }}
                   contentStyle={{ 
                     backgroundColor: '#fff', 
@@ -516,10 +486,10 @@ const Dashboard = () => {
                   width={isMobile ? 40 : 60}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   stroke="#9ca3af"
-                  tickFormatter={(value) => `Ã¢â€šÂ±${value}`}
+                  tickFormatter={(value) => formatCurrency(value)}
                 />
                 <Tooltip 
-                  formatter={(value, name) => [`Ã¢â€šÂ±${parseFloat(value).toFixed(2)}`, name]}
+                  formatter={(value, name) => [formatCurrency(Number(value)), name]}
                   labelStyle={{ color: '#374151' }}
                   contentStyle={{ 
                     backgroundColor: '#fff', 

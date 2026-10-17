@@ -10,6 +10,9 @@ import { resolveExcelTemplatePath } from '../utils/excelTemplatePath.js';
 import { assertProjectIsActive } from '../utils/branchProjects.js';
 import { assertOrderNumberUnlocked } from '../utils/orderNumberLocks.js';
 
+import { initialPRStatus, assignPRReviewers, archivePRReviews } from '../utils/purchaseRequestReviewFlow.js';
+import { lineCents } from '../utils/requestWorkflowRules.js';
+
 const router = express.Router();
 
 // Configure multer for PR accreditation file uploads
@@ -524,7 +527,8 @@ router.get('/:id', authenticate, async (req, res) => {
       ORDER BY prr.created_at ASC
     `, [req.params.id]);
 
-    res.json({ purchaseRequest: { ...pr, items: itemsWithRemarks, payment_schedules: paymentSchedules, payment_review_note: paymentReviewNote, reviews } });
+    const [reviewHistory] = await db.query('SELECT id,archived_by,archived_at,reviews FROM purchase_request_review_history WHERE purchase_request_id=? ORDER BY id', [pr.id]);
+    res.json({ purchaseRequest: { ...pr, items: itemsWithRemarks, payment_schedules: paymentSchedules, payment_review_note: paymentReviewNote, reviews, review_history: reviewHistory.map(entry => ({...entry,reviews:JSON.parse(entry.reviews)})) } });
   } catch (error) {
     console.error('Fetch purchase request error:', error);
     res.status(500).json({ message: 'Failed to fetch purchase request: ' + error.message });
@@ -623,13 +627,21 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
     const paymentBasis = payment_basis === 'non_debt' ? 'non_debt' : 'debt';
     const paymentTermsNote = normalizePaymentTermsNote(payment_terms_note);
     const paymentTermsCode = paymentTermsNote ? 'CUSTOM' : null;
-    const freeTextSupplierName = isItemRequest ? 'TBD' : normalizeSupplierName(supplier_name);
+    let freeTextSupplierName = isItemRequest ? 'TBD' : normalizeSupplierName(supplier_name);
     const normalizedPaymentSchedules = normalizePaymentSchedules(parsedPaymentSchedules);
 
     // Handle accreditation files and check supplier accreditation status
     const accreditationFiles = req.files || [];
     let supplierAccredited = null;
     let matchedSupplierId = supplier_id || null;
+
+    if (matchedSupplierId && !isDraft && !isItemRequest) {
+      const [selected] = await conn.query("SELECT id,supplier_name,accredited FROM suppliers WHERE id=? AND status='Active'", [matchedSupplierId]);
+      if (!selected.length) throw createInputError('Supplier not found');
+      freeTextSupplierName = selected[0].supplier_name;
+      supplierAccredited = Number(selected[0].accredited) === 1 ? 1 : 0;
+      if (!supplierAccredited) status = 'Pending Accreditation Review';
+    }
 
     // Check supplier accreditation status if supplier name is provided
     if (freeTextSupplierName && !isDraft && !isItemRequest) {
@@ -703,7 +715,7 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
         const itemId = item.item_id ?? item.id;
         const quantity = Number(item.quantity);
         const unitPrice = Number(item.unit_price ?? item.estimated_unit_price ?? 0);
-        const totalPrice = quantity * unitPrice;
+        const totalPrice = lineCents(unitPrice, quantity) / 100;
 
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
           throw new Error('Invalid item payload: each item requires item_id (or id) and quantity > 0');
@@ -719,14 +731,14 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
       })
       : [];
 
-    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
-    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
+    const totalAmount = roundMoney(normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0));
 
     if (isDraft) {
       status = 'Draft';
     } else if (isItemRequest) {
       status = 'For Admin Processing';
+    } else if (status === 'Pending Accreditation Review') {
+      // Supplier accreditation must complete before reviewers are assigned.
     } else if (req.user.role === 'admin') {
       status = 'For Admin Review';
     } else {
@@ -785,7 +797,7 @@ router.post('/', authenticate, prAccreditationUpload.array('accreditation_files'
         paymentTermsNote,
         paymentTermsNote ? req.user.id : null,
         paymentTermsNote ? new Date() : null,
-        supplier_id || null,
+        matchedSupplierId,
         freeTextSupplierName,
         supplierAddress,
         totalAmount,
@@ -911,7 +923,7 @@ router.put('/:id/draft', authenticate, async (req, res) => {
         const itemId = item.item_id ?? item.id;
         const quantity = Number(item.quantity);
         const unitPrice = Number(item.unit_price ?? item.estimated_unit_price ?? 0);
-        const totalPrice = quantity * unitPrice;
+        const totalPrice = lineCents(unitPrice, quantity) / 100;
 
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
           throw new Error('Invalid item payload: each item requires item_id (or id) and quantity > 0');
@@ -927,9 +939,10 @@ router.put('/:id/draft', authenticate, async (req, res) => {
       })
       : [];
 
-    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
-    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
+    const [storedLines] = await conn.query('SELECT unit_price,quantity FROM purchase_request_items WHERE purchase_request_id=?',[req.params.id]);
+    const totalAmount = normalizedItems.length
+      ? roundMoney(normalizedItems.reduce((sum,item)=>sum+item.totalPrice,0))
+      : storedLines.reduce((sum,item)=>sum+lineCents(item.unit_price,item.quantity),0)/100;
 
     let supplierAddress = null;
     const effectiveSupplierId = supplier_id ?? pr.supplier_id;
@@ -1026,126 +1039,35 @@ router.put('/:id/draft', authenticate, async (req, res) => {
   }
 });
 
-// Submit Draft PR (engineer only) - moves to For Senior Project Manager Review and notifies senior_project_manager
-router.put('/:id/submit-draft', authenticate, async (req, res) => {
+    // Submit drafts through the same PR-specific review policy used by creation.
+router.put('/:id/submit-draft', authenticate, async (req,res)=>{
   let conn;
   try {
-    // Check if PR exists and is draft
-    const [prs] = await db.query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
-    if (prs.length === 0) {
-      return res.status(404).json({ message: 'Purchase request not found' });
-    }
-
-    const pr = prs[0];
-
-    // Only the original requester can submit
-    if (pr.requested_by !== req.user.id) {
-      return res.status(403).json({ message: 'Only the original requester can submit this draft' });
-    }
-
-    // Only draft PRs can be submitted
-    if (pr.status !== 'Draft') {
-      return res.status(400).json({ message: 'Only draft purchase requests can be submitted' });
-    }
-
-    // Validate required fields for submission
-    if (!pr.purpose || !String(pr.purpose).trim()) {
-      return res.status(400).json({ message: 'Purpose is required to submit' });
-    }
-    
-    if (!pr.date_needed) {
-      return res.status(400).json({ message: 'Date needed is required to submit' });
-    }
-    // Payment schedule requirement is intentionally relaxed — the payment schedule
-    // UI is currently disabled, so debt PRs are allowed to be submitted without schedules.
-    // if (pr.payment_basis === 'debt') {
-    //   const scheduleCount = await getPaymentScheduleCount(db, req.params.id);
-    //   if (scheduleCount === 0) {
-    //     return res.status(400).json({ message: 'At least one payment schedule is required for debt/with account PR.' });
-    //   }
-    // }
-
-    // Check if PR has valid items
-    const [items] = await db.query(
-      'SELECT unit_price FROM purchase_request_items WHERE purchase_request_id = ?',
-      [req.params.id]
-    );
-
-    if (items.length === 0) {
-      return res.status(400).json({ message: 'At least one item is required to submit' });
-    }
-
-    const invalidItems = items.filter(item => !Number.isFinite(item.unit_price) || item.unit_price <= 0);
-    if (invalidItems.length > 0) {
-      return res.status(400).json({ message: 'All items must have a unit price strictly greater than 0 to submit' });
-    }
-
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-
-    // Determine new status based on requester role
-    let newStatus;
-    if (pr.supplier_accredited === 0 || (pr.supplier_name && pr.supplier_accredited === 0)) {
-      newStatus = 'Pending Accreditation Review';
-    } else if (req.user.role === 'engineer') {
-      newStatus = 'For Engineer Review';
-    } else if (req.user.role === 'admin') {
-      newStatus = 'For Admin Review';
-    } else {
-      newStatus = 'For Super Admin Final Approval';
-    }
-
-    // Update status
-    await conn.query(
-      "UPDATE purchase_requests SET status = ?, updated_at = NOW() WHERE id = ?",
-      [newStatus, req.params.id]
-    );
-
-    // Create review records for all required reviewers (if not pending accreditation)
-    const filteredReviewers = [];
-    if (newStatus !== 'Pending Accreditation Review') {
-      const reviewers = await getReviewersForPR(req.user.role);
-      
-      // Filter out the requester themselves
-      const filtered = reviewers.filter(reviewerId => reviewerId !== req.user.id);
-      filteredReviewers.push(...filtered);
-
-      for (const reviewerId of filteredReviewers) {
-        await conn.query(
-          'INSERT INTO purchase_request_reviews (purchase_request_id, reviewer_id, review_status) VALUES (?, ?, ?)',
-          [req.params.id, reviewerId, 'pending']
-        );
-      }
-    }
-
+    conn=await db.getConnection();await conn.beginTransaction();
+    const [rows]=await conn.query('SELECT * FROM purchase_requests WHERE id=? FOR UPDATE',[req.params.id]);
+    const pr=rows[0];
+    if(!pr)throw Object.assign(new Error('Purchase request not found'),{statusCode:404});
+    if(Number(pr.requested_by)!==Number(req.user.id))throw Object.assign(new Error('Only the original requester can submit this draft'),{statusCode:403});
+    if(pr.status!=='Draft')throw createInputError('Only draft purchase requests can be submitted');
+    await assertOrderNumberUnlocked(pr.order_number,'submission');
+    if(!String(pr.purpose||'').trim()||!pr.date_needed)throw createInputError('Purpose and date needed are required to submit');
+    const [items]=await conn.query('SELECT unit_price,quantity FROM purchase_request_items WHERE purchase_request_id=?',[pr.id]);
+    if(!items.length||items.some(item=>!Number.isFinite(Number(item.unit_price))||Number(item.unit_price)<=0))throw createInputError('All items must have a unit price strictly greater than 0 to submit');
+    const total=items.reduce((sum,item)=>sum+lineCents(item.unit_price,item.quantity),0)/100;
+    const [suppliers]=await conn.query("SELECT accredited FROM suppliers WHERE (id=? OR LOWER(supplier_name)=LOWER(?)) AND status='Active' ORDER BY (id=?) DESC LIMIT 1",[pr.supplier_id,pr.supplier_name,pr.supplier_id]);
+    const accredited=suppliers.length?Number(suppliers[0].accredited):0;
+    const status=initialPRStatus(req.user.role,accredited);
+    assertPaymentScheduleTotalsMatch({paymentBasis:pr.payment_basis,schedules:await getExistingPaymentSchedules(conn,pr.id),totalAmount:total});
+    await archivePRReviews(conn,pr.id,req.user.id);
+    await conn.query('UPDATE purchase_requests SET status=?,supplier_accredited=?,total_amount=?,updated_at=NOW() WHERE id=?',[status,accredited,total,pr.id]);
+    const reviewers=status==='Pending Accreditation Review'?[]:await assignPRReviewers(conn,pr.id,pr.requested_by,req.user.role);
     await conn.commit();
-
-    // Send notifications to all reviewers (excluding requester)
-    for (const reviewerId of filteredReviewers) {
-      await createNotification(
-        reviewerId,
-        'New PR Created',
-        `Purchase Request ${pr.pr_number} has been created by ${req.user.first_name} ${req.user.last_name} and is ready for your review`,
-        'PR Created',
-        pr.id,
-        'purchase_request'
-      );
-    }
-
-    res.json({ message: 'Draft submitted successfully', status: newStatus });
-  } catch (error) {
-    if (conn) {
-      try {
-        await conn.rollback();
-      } catch {
-        // ignore
-      }
-    }
-    console.error('Submit draft error:', error);
-    res.status(500).json({ message: 'Failed to submit draft: ' + error.message });
-  } finally {
-    if (conn) conn.release();
-  }
+    for(const id of reviewers)await createNotification(id,'New PR Created', 'Purchase Request '+pr.pr_number+' is ready for review','PR Created',pr.id,'purchase_request');
+    res.json({message:'Draft submitted successfully',status});
+  } catch(error) {
+    if(conn)await conn.rollback();
+    res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to submit draft'});
+  } finally {if(conn)conn.release();}
 });
 
 // Review PR (for Engineers, Admins, Super Admin Rep)
@@ -1163,7 +1085,7 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
     // Get PR and check if user is a reviewer
     const [prs] = await conn.query(
-      'SELECT pr.*, e.role as requester_role FROM purchase_requests pr JOIN employees e ON pr.requested_by = e.id WHERE pr.id = ?',
+      'SELECT pr.*, e.role as requester_role FROM purchase_requests pr JOIN employees e ON pr.requested_by = e.id WHERE pr.id = ? FOR UPDATE',
       [req.params.id]
     );
 
@@ -1174,6 +1096,9 @@ router.post('/:id/review', authenticate, async (req, res) => {
 
     const pr = prs[0];
 
+    if(Number(pr.requested_by)===Number(req.user.id))throw Object.assign(new Error('Requesters cannot review their own request'),{statusCode:403});
+    if(pr.supplier_accredited != null && Number(pr.supplier_accredited) === 0)throw Object.assign(new Error('Supplier accreditation is required before review can continue'),{statusCode:409});
+    if(!['For Engineer Review','For Admin Review','For Senior Project Manager Review','For Super Admin Final Approval'].includes(pr.status))throw createInputError('This PR has no active review stage');
     const isSuperAdminReject = ['super_admin', 'ceo'].includes(req.user.role) && review_status === 'rejected';
 
     // Check if user is a reviewer for this PR
@@ -1509,7 +1434,7 @@ router.post('/:id/review', authenticate, async (req, res) => {
       }
     }
     console.error('Review PR error:', error);
-    res.status(500).json({ message: 'Failed to review PR: ' + error.message });
+    res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : 'Failed to review PR' });
   } finally {
     if (conn) conn.release();
   }
@@ -1844,7 +1769,7 @@ router.put('/:id/super-admin-first-approve', authenticate, requireSuperAdmin, as
         const itemId = item.item_id ?? item.id;
         const quantity = Number(item.quantity);
         const unitPrice = Number(item.unit_price);
-        const totalPrice = quantity * unitPrice;
+        const totalPrice = lineCents(unitPrice, quantity) / 100;
         totalAmount += totalPrice;
         return { itemId, quantity, unitPrice, totalPrice };
       });
@@ -2565,7 +2490,9 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
   try {
     const { purpose, remarks, items, date_needed, project, project_address, order_number, payment_basis, payment_terms_note, supplier_id, supplier_name, payment_schedules } = req.body;
     // Check if PR exists and is rejected
-    const [prs] = await db.query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const [prs] = await conn.query('SELECT * FROM purchase_requests WHERE id = ? FOR UPDATE', [req.params.id]);
     if (prs.length === 0) {
       return res.status(404).json({ message: 'Purchase request not found' });
     }
@@ -2573,7 +2500,7 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
     const pr = prs[0];
 
     // Check project is active only if changed
-    if (pr.project !== project) {
+    if (project !== undefined && pr.project !== project) {
       await assertProjectIsActive(project, { providedOrderNumber: order_number });
     }
     const nextPaymentBasis = payment_basis ?? pr.payment_basis;
@@ -2594,15 +2521,14 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
     if (pr.status !== 'Rejected') {
       return res.status(400).json({ message: 'Only rejected purchase requests can be resubmitted' });
     }
-    conn = await db.getConnection();
-    await conn.beginTransaction();
+    await assertOrderNumberUnlocked(pr.order_number, 'resubmission');
 
     const normalizedItems = Array.isArray(items)
       ? items.map((item) => {
         const itemId = item.item_id ?? item.id;
         const quantity = Number(item.quantity);
         const unitPrice = Number(item.unit_price ?? item.estimated_unit_price ?? 0);
-        const totalPrice = quantity * unitPrice;
+        const totalPrice = lineCents(unitPrice, quantity) / 100;
 
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
           throw new Error('Invalid item payload: each item requires item_id (or id) and quantity > 0');
@@ -2618,9 +2544,10 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       })
       : [];
 
-    const computedTotalAmount = normalizedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    const providedTotalAmount = req.body.total_amount !== undefined ? Number(req.body.total_amount) : null;
-    const totalAmount = (providedTotalAmount !== null && providedTotalAmount > 0) ? providedTotalAmount : computedTotalAmount;
+    const [storedLines] = await conn.query('SELECT unit_price,quantity FROM purchase_request_items WHERE purchase_request_id=?',[req.params.id]);
+    const totalAmount = normalizedItems.length
+      ? roundMoney(normalizedItems.reduce((sum,item)=>sum+item.totalPrice,0))
+      : storedLines.reduce((sum,item)=>sum+lineCents(item.unit_price,item.quantity),0)/100;
     const schedulesForValidation = hasPaymentSchedulesField
       ? normalizedPaymentSchedules
       : await getExistingPaymentSchedules(conn, req.params.id);
@@ -2631,11 +2558,12 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
     });
 
     let supplierAddress = null;
+    let supplierAccredited = 0;
     const effectiveSupplierId = supplier_id ?? pr.supplier_id;
 
     if (effectiveSupplierId) {
       const [supRows] = await conn.query(
-        'SELECT address FROM suppliers WHERE id = ? LIMIT 1',
+        "SELECT address,accredited FROM suppliers WHERE id = ? AND status='Active' LIMIT 1",
         [effectiveSupplierId]
       );
 
@@ -2644,14 +2572,17 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       }
 
       supplierAddress = supRows[0].address ?? null;
+      supplierAccredited = Number(supRows[0].accredited) === 1 ? 1 : 0;
     }
 
-    // Update PR details and reset status to For Senior Project Manager Review, clear all pricing data
+    const nextStatus=initialPRStatus(req.user.role,supplierAccredited);
+    await archivePRReviews(conn,pr.id,req.user.id);
+    // Restart the applicable review chain after correction.
     await conn.query(
       `UPDATE purchase_requests 
        SET purpose = ?, remarks = ?, date_needed = ?, project = ?, project_address = ?, order_number = ?, 
            payment_basis = ?, payment_terms_code = ?, payment_terms_note = ?, payment_terms_set_by = ?, payment_terms_set_at = ?, supplier_id = ?,
-           supplier_name = ?, status = 'For Senior Project Manager Review', approved_by = NULL, approved_at = NULL, 
+           supplier_name = ?, status = ?, supplier_accredited = ?, approved_by = NULL, approved_at = NULL,
            supplier_address = ?, rejection_reason = NULL, 
            total_amount = ?, updated_at = NOW()
        WHERE id = ?`,
@@ -2669,6 +2600,8 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       nextPaymentTermsNote ? new Date() : null,
       supplier_id ?? pr.supplier_id,
         nextSupplierName,
+        nextStatus,
+        supplierAccredited,
         supplierAddress,
         totalAmount,
       req.params.id
@@ -2691,14 +2624,9 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       await replacePaymentSchedules(conn, req.params.id, normalizedPaymentSchedules, req.user.id);
     }
 
-    if (nextPaymentBasis === 'debt') {
-      const scheduleCount = await getPaymentScheduleCount(conn, req.params.id);
-      if (scheduleCount === 0) {
-        await conn.rollback();
-        return res.status(400).json({ message: 'At least one payment schedule is required for debt/with account PR.' });
-      }
-    }
-
+    const [pricedLines]=await conn.query('SELECT unit_price FROM purchase_request_items WHERE purchase_request_id=?',[pr.id]);
+    if(!pricedLines.length||pricedLines.some(item=>!Number.isFinite(Number(item.unit_price))||Number(item.unit_price)<=0))throw createInputError('All submitted lines need positive prices');
+    if(nextStatus!=='Pending Accreditation Review')await assignPRReviewers(conn,pr.id,pr.requested_by,req.user.role);
     await conn.commit();
 
     // Notify Super Admin Reps about resubmitted PR
@@ -2719,7 +2647,7 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
       console.error('Audit log error:', auditErr);
     }
 
-    res.json({ message: 'Purchase request resubmitted successfully', status: 'For Senior Project Manager Review' });
+    res.json({ message: 'Purchase request resubmitted successfully', status: nextStatus });
   } catch (error) {
     if (conn) {
       try {
@@ -2732,7 +2660,7 @@ router.put('/:id/resubmit', authenticate, async (req, res) => {
     const statusCode = error.statusCode || 500;
     res.status(statusCode).json({ message: statusCode === 500 ? 'Failed to resubmit purchase request: ' + error.message : error.message });
   } finally {
-    if (conn) conn.release();
+    if (conn) { await conn.rollback(); conn.release(); }
   }
 });
 
@@ -2781,7 +2709,7 @@ router.put('/:id/approve', authenticate, async (req, res) => {
          await conn.query('INSERT INTO purchase_request_reviews (purchase_request_id, reviewer_id, review_status, review_comment, reviewed_at) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE review_status = VALUES(review_status), review_comment = VALUES(review_comment), reviewed_at = NOW()', [req.params.id, req.user.id, 'approved', remarks]);
          
          // Check if all admins approved
-         const [adminCountRes] = await conn.query("SELECT count(*) as count FROM users WHERE role = 'admin' AND is_active = 1");
+         const [adminCountRes] = await conn.query("SELECT count(*) as count FROM employees WHERE role = 'admin' AND is_active = 1");
          const [reviewCountRes] = await conn.query("SELECT count(*) as count FROM purchase_request_reviews WHERE purchase_request_id = ? AND review_status = 'approved'", [req.params.id]);
          
          if (reviewCountRes[0].count >= adminCountRes[0].count) {
@@ -2865,51 +2793,8 @@ router.put('/:id/received', authenticate, async (req, res) => {
 });
 
 // Update PR status
-router.put('/:id/status', authenticate, async (req, res) => {
-  try {
-    const { status } = req.body;
-    const [prs] = await db.query('SELECT order_number, status FROM purchase_requests WHERE id = ?', [req.params.id]);
-    if (prs.length === 0) {
-      return res.status(404).json({ message: 'Purchase request not found' });
-    }
-    await assertOrderNumberUnlocked(prs[0].order_number, 'status update');
-
-    const currentStatus = prs[0].status;
-    const userRole = req.user.role;
-
-    const isSuperAdminOverride = ['super_admin', 'ceo'].includes(req.user.role) && (status === 'On Hold' || status === 'Rejected');
-
-    if (!isSuperAdminOverride) {
-      // Validate that user's role matches the current status
-      if (currentStatus === 'For Engineer Review' && userRole !== 'engineer') {
-        return res.status(403).json({ message: 'This purchase request is currently awaiting Engineer review. You do not have permission to update the status at this stage.' });
-      }
-
-      if (currentStatus === 'For Admin Review' && userRole !== 'admin') {
-        return res.status(403).json({ message: 'This purchase request is currently awaiting Admin review. You do not have permission to update the status at this stage.' });
-      }
-
-      if (currentStatus === 'For Senior Project Manager Review' && userRole !== 'senior_project_manager') {
-        return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin Rep review. You do not have permission to update the status at this stage.' });
-      }
-
-      if (currentStatus === 'For Super Admin Final Approval' && !['super_admin', 'ceo'].includes(userRole)) {
-        return res.status(403).json({ message: 'This purchase request is currently awaiting Super Admin final approval. You do not have permission to update the status at this stage.' });
-      }
-    }
-
-    await db.query(
-      'UPDATE purchase_requests SET status = ?, updated_at = NOW() WHERE id = ?',
-      [status, req.params.id]
-    );
-
-    res.json({ message: `Purchase request status updated to ${status} successfully`, status });
-  } catch (error) {
-    if (error?.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-    res.status(500).json({ message: 'Failed to update purchase request status' });
-  }
+router.put('/:id/status', authenticate, (req,res)=>{
+  res.status(409).json({message:'Use the assigned review, correction, or authorized bypass action; direct status changes are disabled'});
 });
 
 // Delete Purchase Request (Draft only for creator, any status for Super Admin)

@@ -410,7 +410,7 @@ const CashRequests = () => {
         supplierService.getAllForSelect(),
         projectService.getActive()
       ])
-      setSuppliers(suppliersData)
+      setSuppliers(Array.isArray(suppliersData) ? suppliersData : suppliersData?.suppliers || [])
       setBranches(branchesData)
     } catch (err) {
       console.error('Failed to load data', err)
@@ -452,7 +452,7 @@ const CashRequests = () => {
         supplierService.getAllForSelect(),
         projectService.getActive()
       ])
-      setSuppliers(suppliersData)
+      setSuppliers(Array.isArray(suppliersData) ? suppliersData : suppliersData?.suppliers || [])
       setBranches(branchesData)
     } catch (err) {
       console.error('Failed to load data', err)
@@ -835,18 +835,12 @@ const CashRequests = () => {
                             <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleProcurementApprove(cr.id, 'approved'); }} title="Approve">
                               <CheckCircle className="w-4 h-4 text-green-500" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleProcurementApprove(cr.id, 'hold'); }} title="Hold">
-                              <Clock className="w-4 h-4 text-orange-500" />
-                            </Button>
                           </>
                         )}
                         {cr.status === 'For Super Admin Final Approval' && (
                           <>
                             <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSuperAdminApprove(cr.id, 'approved'); }} title="Approve">
                               <CheckCircle className="w-4 h-4 text-green-500" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleSuperAdminApprove(cr.id, 'hold'); }} title="Hold">
-                              <Clock className="w-4 h-4 text-orange-500" />
                             </Button>
                           </>
                         )}

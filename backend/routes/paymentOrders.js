@@ -7,18 +7,22 @@ import { resolveExcelTemplatePath } from '../utils/excelTemplatePath.js';
 import { assertProjectIsActive } from '../utils/branchProjects.js';
 import { assertOrderNumberUnlocked } from '../utils/orderNumberLocks.js';
 
+import { transaction } from '../services/requestWorkflow.js';
+import { restorePaymentSource } from '../services/paymentSourceRestoration.js';
+import { fail, lineCents, moneyCents } from '../utils/requestWorkflowRules.js';
+
 const router = express.Router();
 
 // Generate PO Number
-const generatePONumber = async () => {
+const generatePONumber = async (connection = db) => {
   const prefix = 'PO';
   const year = new Date().getFullYear();
   const month = String(new Date().getMonth() + 1).padStart(2, '0');
   
-  const [result] = await db.query(
+  const [result] = await connection.query(
     `SELECT po_number FROM payment_orders 
      WHERE po_number LIKE ? 
-     ORDER BY id DESC LIMIT 1`,
+     ORDER BY id DESC LIMIT 1 FOR UPDATE`,
     [`${prefix}-${year}-${month}-%`]
   );
   
@@ -120,8 +124,12 @@ router.get('/:id', authenticate, async (req, res) => {
 
 // Create Payment Order from an eligible source request
 router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_manager', 'ceo', 'super_admin'), async (req, res) => {
+  let conn;
   try {
-    const { service_request_id, cash_request_id, reimbursement_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, remarks } = req.body;
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    const { service_request_id, cash_request_id, reimbursement_id, payee_name, payee_address, purpose, project, project_address, order_number, remarks } = req.body;
+    if (!String(payee_name || '').trim()) throw fail('Payee name is required');
     
     // Validate that at least one source is provided
     const sourceCount = [service_request_id, cash_request_id, reimbursement_id].filter(Boolean).length;
@@ -134,12 +142,22 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       return res.status(400).json({ message: 'Cannot provide multiple sources. Only one of Service Request, Cash Request, or Reimbursement is allowed' });
     }
     
+    const sourceTable=service_request_id?'service_requests':cash_request_id?'cash_requests':'reimbursements';
+    const sourceId=service_request_id||cash_request_id||reimbursement_id;
+    const [sourceRows]=await conn.query('SELECT * FROM '+sourceTable+' WHERE id=? FOR UPDATE',[sourceId]);
+    const source=sourceRows[0];
+    if(!source)throw fail('Source request not found',404);
+    const column=service_request_id?'service_request_id':cash_request_id?'cash_request_id':'reimbursement_id';
+    const [duplicates]=await conn.query('SELECT id FROM payment_orders WHERE '+column+"=? AND status NOT IN ('Cancelled','Rejected') LIMIT 1",[sourceId]);
+    if(duplicates.length)throw fail('This source already has an active Payment Order',409);
+    const sourceAmount=(sourceTable==='reimbursements'?moneyCents(source.amount):lineCents(source.amount,source.quantity??1))/100;
+    if(!Number.isFinite(sourceAmount)||sourceAmount<=0)throw fail('Source total must be positive');
     let sourcePurpose = '';
     let sourceRequestedBy = null;
     
     // If SR source, validate SR
     if (service_request_id) {
-      const [srs] = await db.query(
+      const [srs] = await conn.query(
         'SELECT sr_number, requested_by, purpose, status, sr_type, project, order_number FROM service_requests WHERE id = ?',
         [service_request_id]
       );
@@ -164,7 +182,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
     
     // If CR source, validate CR
     if (cash_request_id) {
-      const [crs] = await db.query(
+      const [crs] = await conn.query(
         'SELECT cr_number, requested_by, purpose, status, cr_type, amount, supplier_id, supplier_name, project, order_number FROM cash_requests WHERE id = ?',
         [cash_request_id]
       );
@@ -189,7 +207,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
     
     // If Reimbursement source, validate Reimbursement
     if (reimbursement_id) {
-      const [reimbursements] = await db.query(
+      const [reimbursements] = await conn.query(
         'SELECT id, rmb_number, requested_by, purpose, status, amount, payee, project, project_address, order_number FROM reimbursements WHERE id = ?',
         [reimbursement_id]
       );
@@ -213,23 +231,26 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
       return res.status(403).json({ message: 'Engineers can create payment orders only from their own approved requests' });
     }
     
-    const poNumber = await generatePONumber();
+    const [numberLock] = await conn.query("SELECT GET_LOCK('procurement_payment_order_number',5) AS acquired");
+    if (!numberLock[0].acquired) throw fail('Payment order numbering is busy; retry shortly',409);
+    const poNumber = await generatePONumber(conn);
     
-    const [result] = await db.query(
+    const [result] = await conn.query(
       `INSERT INTO payment_orders 
-       (po_number, service_request_id, cash_request_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, status, remarks, requested_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (po_number, service_request_id, cash_request_id, reimbursement_id, payee_name, payee_address, purpose, project, project_address, order_number, amount, status, remarks, requested_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         service_request_id || null,
         cash_request_id || null,
+        reimbursement_id || null,
         payee_name || null,
         payee_address || null,
         purpose || sourcePurpose,
         project || null,
         project_address || null,
         order_number || null,
-        amount || 0,
+        sourceAmount,
         'Pending',
         remarks || null,
         req.user.id
@@ -238,7 +259,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
     
     // Update Service Request status to 'Payment Order Created'
     if (service_request_id) {
-      await db.query(
+      await conn.query(
         'UPDATE service_requests SET status = ?, updated_at = NOW() WHERE id = ?',
         ['Payment Order Created', service_request_id]
       );
@@ -246,7 +267,7 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
     
     // Update Cash Request status to 'Payment Order Created'
     if (cash_request_id) {
-      await db.query(
+      await conn.query(
         'UPDATE cash_requests SET status = ?, updated_at = NOW() WHERE id = ?',
         ['Payment Order Created', cash_request_id]
       );
@@ -254,95 +275,57 @@ router.post('/', authenticate, authorize('engineer', 'admin', 'senior_project_ma
     
     // Update Reimbursement status to 'Payment Order Created'
     if (reimbursement_id) {
-      await db.query(
+      await conn.query(
         'UPDATE reimbursements SET status = ?, updated_at = NOW() WHERE id = ?',
         ['Payment Order Created', reimbursement_id]
       );
     }
     
+    await conn.commit();
     res.status(201).json({ 
       id: result.insertId, 
       po_number: poNumber,
       message: 'Payment Order created successfully' 
     });
   } catch (error) {
+    if(conn)await conn.rollback();
     console.error('Error creating payment order:', error);
     res.status(error.statusCode || 500).json({ message: error.message || 'Failed to create payment order' });
-  }
+  } finally { if(conn){await conn.rollback();await conn.query("SELECT RELEASE_LOCK('procurement_payment_order_number')").catch(()=>{});conn.release();} }
 });
 
 // Update Payment Order Status
-router.patch('/:id/status', authenticate, requireAdmin, async (req, res) => {
+router.patch('/:id/status', authenticate, requireAdmin, async (req,res)=>{
   try {
-    const { status, remarks } = req.body;
-    const validStatuses = ['Draft', 'Pending', 'For Admin Approval', 'For Super Admin Final Approval', 'Approved', 'PO Created', 'On Hold', 'Rejected'];
-    
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-    
-    const [paymentOrders] = await db.query(
-      'SELECT * FROM payment_orders WHERE id = ?',
-      [req.params.id]
-    );
-    
-    if (paymentOrders.length === 0) {
-      return res.status(404).json({ message: 'Payment order not found' });
-    }
-    await db.query(
-      'UPDATE payment_orders SET status = ?, remarks = ?, updated_at = NOW() WHERE id = ?',
-      [status, remarks || null, req.params.id]
-    );
-    
-    res.json({ message: 'Payment order status updated successfully' });
-  } catch (error) {
-    if (error?.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-    console.error('Error updating payment order status:', error);
-    res.status(500).json({ message: 'Failed to update payment order status' });
-  }
+    await transaction(async conn => {
+      const [rows] = await conn.query('SELECT * FROM payment_orders WHERE id=? FOR UPDATE', [req.params.id]);
+      if (!rows.length) throw fail('Payment order not found', 404);
+      if (!['Draft','Pending','For Admin Approval'].includes(rows[0].status) || req.body.status !== 'For Super Admin Final Approval') {
+        throw fail('Use the Payment Order review action; this status transition is not allowed', 409);
+      }
+      await assertOrderNumberUnlocked(rows[0].order_number, 'submission');
+      await conn.query('UPDATE payment_orders SET status=?,updated_at=NOW() WHERE id=?', [req.body.status,req.params.id]);
+    });
+    res.json({message:'Payment order submitted for final review'});
+  } catch(error) { res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to submit payment order'}); }
 });
 
 // Super Admin Approve Payment Order
-router.patch('/:id/super-admin-approve', authenticate, requireSuperAdmin, async (req, res) => {
+router.patch('/:id/super-admin-approve', authenticate, requireSuperAdmin, async (req,res)=>{
   try {
-    const { status } = req.body;
-    
-    if (!['approved', 'rejected', 'hold'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status. Must be approved, rejected, or hold' });
-    }
-    
-    const statusMap = {
-      'approved': 'Approved',
-      'rejected': 'Rejected',
-      'hold': 'On Hold'
-    };
-    const newStatus = statusMap[status];
-    
-    const [paymentOrders] = await db.query(
-      'SELECT * FROM payment_orders WHERE id = ?',
-      [req.params.id]
-    );
-    
-    if (paymentOrders.length === 0) {
-      return res.status(404).json({ message: 'Payment order not found' });
-    }
-    await assertOrderNumberUnlocked(paymentOrders[0].order_number, 'approval');
-    
-    await db.query(
-      'UPDATE payment_orders SET status = ?, updated_at = NOW() WHERE id = ?',
-      [newStatus, req.params.id]
-    );
-    
-    res.json({ message: `Payment order ${status} successfully` });
-  } catch (error) {
-    if (error?.statusCode) {
-      return res.status(error.statusCode).json({ message: error.message });
-    }
-    console.error('Error super admin approving payment order:', error);
-    res.status(500).json({ message: 'Failed to approve payment order' });
-  }
+    const status=await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM payment_orders WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Payment order not found',404);
+      if(!['Pending','For Admin Approval','For Super Admin Final Approval','On Hold'].includes(rows[0].status))throw fail('Payment order is not awaiting review',409);
+      const mapped={approved:'Approved',rejected:'Rejected',hold:'On Hold'}[req.body.status];
+      if(!mapped)throw fail('Invalid review decision');
+      await assertOrderNumberUnlocked(rows[0].order_number,'approval');
+      await conn.query('UPDATE payment_orders SET status=?,updated_at=NOW() WHERE id=?',[mapped,req.params.id]);
+      if(mapped==='Rejected')await restorePaymentSource(conn,rows[0],'payment_orders',req.params.id);
+      return mapped;
+    });
+    res.json({message:'Payment order reviewed successfully',status});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to review payment order'});}
 });
 
 // Export Payment Order to Excel
@@ -431,16 +414,22 @@ router.get('/:id/export', authenticate, async (req, res) => {
 });
 
 // Delete Payment Order
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAdmin, async(req,res)=>{
   try {
-    const [paymentOrders] = await db.query(
-      'SELECT * FROM payment_orders WHERE id = ?',
-      [req.params.id]
-    );
-  } catch (error) {
-    console.error('Error deleting payment order:', error);
-    res.status(500).json({ message: 'Failed to delete payment order' });
-  }
+    await transaction(async conn=>{
+      const [rows]=await conn.query('SELECT * FROM payment_orders WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!rows.length)throw fail('Payment order not found',404);
+      const payment=rows[0];
+      if(!['Draft','Pending'].includes(payment.status))throw fail('Only Draft or Pending payment orders may be deleted',409);
+      await assertOrderNumberUnlocked(payment.order_number,'deletion');
+      const [links]=await conn.query('SELECT id FROM disbursement_vouchers WHERE payment_order_id=? LIMIT 1',[payment.id]);
+      if(links.length)throw fail('Payment order has voucher history and cannot be deleted',409);
+      await conn.query('INSERT INTO system_audit_logs (user_id,action,entity_type,entity_id,details) VALUES (?,?,?,?,?)',[req.user.id,'Payment Order Deleted','payment_orders',payment.id,JSON.stringify(payment)]);
+      await conn.query('DELETE FROM payment_orders WHERE id=?',[payment.id]);
+      await restorePaymentSource(conn,payment,'payment_orders',payment.id);
+    });
+    res.json({message:'Payment order deleted successfully'});
+  }catch(error){res.status(error.statusCode||500).json({message:error.statusCode?error.message:'Failed to delete payment order'});}
 });
 
 export default router;

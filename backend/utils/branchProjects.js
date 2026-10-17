@@ -81,15 +81,7 @@ export const getBranches = async ({ forceRefresh = false } = {}) => {
 
     return branches;
   } catch (error) {
-    console.warn(`[getBranches] External API failed (${error.message}). Using fallback data.`);
-    const fallbackBranches = [
-      { id: '1', branch_name: 'HQ Office', branch_address: '123 Main St', order_number: 'ORD-001', is_active: true },
-      { id: '2', branch_name: 'Warehouse A', branch_address: '456 Storage Ln', order_number: 'ORD-002', is_active: true },
-      { id: '3', branch_name: 'Site B (Archived)', branch_address: '789 Old Site', order_number: 'ORD-003', is_active: false }
-    ].map(normalizeBranch);
-    
-    // Do not cache the fallback data so that it tries the real API again later
-    return fallbackBranches;
+    throw createProjectValidationError('Project service is temporarily unavailable. Please try again.', 503);
   } finally {
     clearTimeout(timeout);
   }

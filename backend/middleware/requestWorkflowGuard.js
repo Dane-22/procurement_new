@@ -109,6 +109,10 @@ export const guardLinkedDocument = table => [authenticate, async(req,res,next)=>
         const [records]=await db.query('SELECT request_kind FROM cash_requests WHERE id=?',[linked[fk]]);
         if(records[0]?.request_kind==='petty_cash')continue;
       }
+      // Serialize an existing payment's mutation with source withdrawal,
+      // resubmission, and downstream creation across all server workers.
+      // POST creation already holds this lease in guardPaymentSource.
+      if(id)await lease(req,res,`workflow-payment:${kind}:${linked[fk]}`);
       const round=await currentRound(db,kind,linked[fk]);
       if(round?.status!=='approved')throw fail('Linked source requires new-flow approval before downstream changes/payment',409);
       if(kind==='cr'&&req.path.endsWith('/mark-paid')&&req.user.role!=='admin')throw fail('Only Admin releases cash',403);

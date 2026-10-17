@@ -12,6 +12,7 @@ import logger from './utils/logger.js';
 import db from './config/database.js';
 import { initSocket } from './utils/socket.js';
 import sanitizeInput from './middleware/sanitize.js';
+import { protectFinancialUploads } from './middleware/financialUploads.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,7 +88,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+      callback(Object.assign(new Error('Not allowed by CORS'), { statusCode: 403 }));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -162,7 +163,7 @@ app.use((req, res, next) => {
 });
 
 // Serve static files from the uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', protectFinancialUploads, express.static(path.join(__dirname, 'uploads')));
 
 // Test database connection
 app.get('/api/health', async (req, res) => {
@@ -217,6 +218,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/uploads', uploadRoutes);
 
 app.use((err, req, res, next) => {
+  if (err.statusCode === 403) return res.status(403).json({ message: err.message });
   logger.error(err.stack);
   res.status(500).json({ 
     message: 'Something went wrong!',

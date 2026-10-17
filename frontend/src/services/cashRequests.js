@@ -73,7 +73,8 @@ export const cashRequestService = {
     return response.data;
   },
   resubmit: async(id,data)=>{
-    await api.post(`/workflows/cr/${id}/withdraw`);
+    const current = (await api.get(`/cash-requests/${id}`, {cache:false})).data.cashRequest;
+    if (current.status !== 'Draft') await api.post(`/workflows/cr/${id}/withdraw`);
     await api.put(`/cash-requests/${id}`,data);
     return (await api.post(`/workflows/cr/${id}/submit`)).data;
   },

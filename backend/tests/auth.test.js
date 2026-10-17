@@ -22,6 +22,12 @@ describe('Auth API Integration', () => {
     jest.clearAllMocks();
   });
 
+  it('rejects password-sync calls without an API key before inspecting service configuration', async () => {
+    const res = await request(app).post('/api/auth/sync-password').send({});
+    expect(res.statusCode).toBe(401);
+    expect(res.body.message).toBe('Unauthorized');
+  });
+
   describe('POST /api/auth/login', () => {
     it('should login successfully with valid credentials', async () => {
       // Mock db response for employee search
@@ -101,6 +107,13 @@ describe('Auth API Integration', () => {
   });
 
   describe('GET /api/auth/me', () => {
+    it('rejects an existing token after the employee is deactivated', async () => {
+      const token = jwt.sign({id:1},process.env.JWT_SECRET || 'your-secret-key');
+      querySpy.mockResolvedValueOnce([[{id:1,role:'engineer',is_active:0}]]);
+      const res = await request(app).get('/api/auth/me').set('Authorization',`Bearer ${token}`);
+      expect(res.statusCode).toBe(403);
+      expect(res.body.user).toBeUndefined();
+    });
     it('should return user profile if valid token provided', async () => {
       const token = jwt.sign({ id: 1, role: 'engineer' }, process.env.JWT_SECRET || 'your-secret-key');
 

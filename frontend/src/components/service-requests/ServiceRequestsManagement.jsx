@@ -394,7 +394,7 @@ const ServiceRequestsManagement = () => {
   const fetchSuppliers = async () => {
     try {
       const data = await supplierService.getAll();
-      setSuppliers(data);
+      setSuppliers(Array.isArray(data) ? data : Array.isArray(data?.suppliers) ? data.suppliers : []);
     } catch (err) {
       console.error('Failed to fetch suppliers', err);
     }

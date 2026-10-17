@@ -5,6 +5,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
+    "audit:schema": "node scripts/auditRemediationMigration.js",
+    "audit:schema:check": "node scripts/auditRemediationMigration.js --check",
     "workflow:schema": "node scripts/requestWorkflowMigration.js --schema",
     "workflow:inventory": "node scripts/requestWorkflowMigration.js --inventory",
     "test:workflows": "node scripts/testRequestWorkflows.js",

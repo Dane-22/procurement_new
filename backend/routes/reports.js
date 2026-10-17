@@ -4,6 +4,51 @@ import db from '../config/database.js';
 
 const router = express.Router();
 
+// Complete aggregates for the ordinary dashboard. Latest-row lists remain
+// useful for activity, but never determine counts or financial totals.
+router.get('/summary', authenticate, async (req, res) => {
+  try {
+    const own = req.user.role === 'engineer';
+    const pending = ['Pending','For Approval','Pending Accreditation Review','For Engineer Review','For Admin Review','For Senior Project Manager Review','For Super Admin Final Approval','For Procurement Review','For Admin Approval','For CEO Approval'];
+    const groups = {};
+    for (const [key, table] of [['pr','purchase_requests'],['sr','service_requests'],['cr','cash_requests']]) {
+      const [rows] = await db.query(`SELECT status,COUNT(*) AS count FROM ${table} ${own ? 'WHERE requested_by=?' : ''} GROUP BY status`, own ? [req.user.id] : []);
+      groups[key] = rows;
+    }
+    const poScope = own ? 'WHERE (pr.requested_by=? OR sr.requested_by=?)' : '';
+    const [poRows] = await db.query(`SELECT COUNT(*) AS total FROM purchase_orders po LEFT JOIN purchase_requests pr ON pr.id=po.purchase_request_id LEFT JOIN service_requests sr ON sr.id=po.service_request_id ${poScope}`, own ? [req.user.id,req.user.id] : []);
+    const total = key => groups[key].reduce((sum,row) => sum + Number(row.count),0);
+    const count = (key,statuses) => groups[key].filter(row => statuses.includes(row.status)).reduce((sum,row) => sum + Number(row.count),0);
+    // Count each Paid voucher once. PR and PO totals represent commitments and
+    // must not be added to payments or to one another as actual spending.
+    const [payments] = await db.query(`SELECT DATE_FORMAT(COALESCE(dv.payment_date,dv.updated_at),'%Y-%m') AS period,SUM(dv.amount) AS amount
+      FROM disbursement_vouchers dv
+      LEFT JOIN purchase_requests pr ON pr.id=dv.purchase_request_id
+      LEFT JOIN service_requests sr ON sr.id=dv.service_request_id
+      LEFT JOIN cash_requests cr ON cr.id=dv.cash_request_id
+      LEFT JOIN payment_requests payment ON payment.id=dv.payment_request_id
+      LEFT JOIN purchase_requests payment_pr ON payment_pr.id=payment.purchase_request_id
+      LEFT JOIN service_requests payment_sr ON payment_sr.id=payment.service_request_id
+      LEFT JOIN cash_requests payment_cr ON payment_cr.id=payment.cash_request_id
+      LEFT JOIN payment_orders payment_order ON payment_order.id=dv.payment_order_id
+      LEFT JOIN service_requests order_sr ON order_sr.id=payment_order.service_request_id
+      LEFT JOIN cash_requests order_cr ON order_cr.id=payment_order.cash_request_id
+      LEFT JOIN reimbursements order_rmb ON order_rmb.id=payment_order.reimbursement_id
+      WHERE dv.status='Paid' AND COALESCE(dv.payment_date,dv.updated_at)>=DATE_FORMAT(DATE_SUB(CURDATE(),INTERVAL 5 MONTH),'%Y-%m-01')
+        AND COALESCE(dv.payment_date,dv.updated_at)<DATE_ADD(CURDATE(),INTERVAL 1 DAY)
+        ${own ? 'AND (pr.requested_by=? OR sr.requested_by=? OR cr.requested_by=? OR payment_pr.requested_by=? OR payment_sr.requested_by=? OR payment_cr.requested_by=? OR order_sr.requested_by=? OR order_cr.requested_by=? OR order_rmb.requested_by=?)' : ''}
+      GROUP BY period ORDER BY period`, own ? Array(9).fill(req.user.id) : []);
+    res.json({
+      stats: {totalPRs:total('pr'),pendingPRs:count('pr',pending),approvedPRs:count('pr',['Approved','For Purchase','PO Created','Payment Request Created','Completed','Received']),totalPOs:Number(poRows[0].total),totalSRs:total('sr'),pendingSRs:count('sr',pending),totalCRs:total('cr'),pendingCRs:count('cr',pending)},
+      monthlyPayments: payments.map(row => ({period:row.period,amount:Number(row.amount)})),
+      paymentMetric: 'Paid disbursement vouchers; excludes commitments and direct cash releases'
+    });
+  } catch (error) {
+    console.error('Failed to fetch dashboard summary:', error);
+    res.status(500).json({message:'Failed to fetch dashboard summary'});
+  }
+});
+
 // Dashboard stats (super admin only)
 router.get('/dashboard', authenticate, requireSuperAdmin, async (req, res) => {
   try {
@@ -121,7 +166,7 @@ router.get('/supplier-performance', authenticate, requireSuperAdmin, async (req,
   try {
     const [supplierData] = await db.query(`
       SELECT 
-        s.name as supplier_name,
+        s.supplier_name as supplier_name,
         COUNT(po.id) as order_count,
         SUM(po.total_amount) as total_amount,
         AVG(CASE WHEN po.status = 'delivered' THEN 1 ELSE 0 END) * 100 as fulfillment_rate

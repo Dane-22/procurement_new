@@ -1,6 +1,7 @@
 import api from './api';
 
 export const reportService = {
+  getSummary: async () => (await api.get('/reports/summary', { cache: false })).data,
   getDashboardStats: async () => {
     const response = await api.get('/reports/dashboard');
     return response.data;

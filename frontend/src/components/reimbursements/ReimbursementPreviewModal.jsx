@@ -1,3 +1,4 @@
+import { ProtectedImage, ProtectedDownload } from '../shared/ProtectedAttachment';
 import React, { useMemo, useState } from 'react';
 import { Eye, X, Download, FileText } from 'lucide-react';
 
@@ -346,15 +347,7 @@ const ReimbursementPreviewModal = ({ reimbursement, loading, onClose }) => {
                             <Eye className="w-4 h-4 text-blue-600" />
                           </Button>
                           {fileUrl && (
-                            <a
-                              className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
-                              href={fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Download"
-                            >
-                              <Download className="w-4 h-4" />
-                            </a>
+                            <ProtectedDownload className="inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200" filePath={a.file_path} filename={a.file_name} title="Download"><Download className="w-4 h-4" /></ProtectedDownload>
                           )}
                         </div>
                       </div>
@@ -391,24 +384,12 @@ const ReimbursementPreviewModal = ({ reimbursement, loading, onClose }) => {
             </div>
             <div className="p-4 flex items-center justify-center bg-gray-50">
               {previewAttachment.mime_type?.startsWith('image/') ? (
-                <img
-                  src={getFileUrl(previewAttachment.file_path)}
-                  alt={previewAttachment.file_name}
-                  className="max-w-full max-h-[70vh] object-contain"
-                  crossOrigin="anonymous"
-                />
+                <ProtectedImage filePath={previewAttachment.file_path} alt={previewAttachment.file_name} className="max-w-full max-h-[70vh] object-contain" />
               ) : (
                 <div className="text-center py-12">
                   <p className="text-gray-500 mb-4">Preview not available for this file type</p>
                   {getFileUrl(previewAttachment.file_path) && (
-                    <a
-                      href={getFileUrl(previewAttachment.file_path)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Download file
-                    </a>
+                    <ProtectedDownload filePath={previewAttachment.file_path} filename={previewAttachment.file_name} className="text-blue-600 hover:underline">Download file</ProtectedDownload>
                   )}
                 </div>
               )}
